@@ -71,12 +71,6 @@ class Program
 
     static void Main()
     {
-        Console.Title = "SysView Hardware";
-        Console.WriteLine("=== SysView Hardware v1.0 ===");
-        Console.WriteLine($"    Port    : {PORT}");
-        Console.WriteLine($"    Endpoint: http://127.0.0.1:{PORT}/data.json");
-        Console.WriteLine();
-
         // ── Ouverture du matériel ─────────────────────────────────────────────
         var hw = new Computer
         {
@@ -86,18 +80,8 @@ class Program
             IsNetworkEnabled = true,
         };
 
-        try
-        {
-            hw.Open();
-            Console.WriteLine("[OK] Hardware ouvert.");
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[ERR] Computer.Open() : {ex.Message}");
-            Console.Error.WriteLine("      Relancez en tant qu'Administrateur.");
-            Console.ReadLine();
-            return;
-        }
+        try   { hw.Open(); }
+        catch { return; }   // droits insuffisants — le bridge détectera l'absence
 
         // ── Premier poll synchrone (évite réponse vide au démarrage) ─────────
         Poll(hw);
@@ -115,18 +99,9 @@ class Program
         lis.Prefixes.Add($"http://127.0.0.1:{PORT}/");
 
         try { lis.Start(); }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[ERR] Port {PORT} indisponible : {ex.Message}");
-            Console.Error.WriteLine("      Une autre instance est-elle déjà lancée ?");
-            hw.Close();
-            Environment.Exit(1);
-        }
+        catch { hw.Close(); Environment.Exit(1); }   // port déjà occupé
 
         AppDomain.CurrentDomain.ProcessExit += (_, _) => { hw.Close(); lis.Stop(); };
-        Console.CancelKeyPress += (_, e) => { e.Cancel = false; hw.Close(); lis.Stop(); };
-
-        Console.WriteLine("[OK] En écoute. Ctrl+C pour arrêter.");
 
         while (lis.IsListening)
         {
@@ -162,9 +137,13 @@ class Program
                         {
                             string n = x.Name.ToLowerInvariant();
 
-                            // Température : Package / Tdie / Tctl (AMD+Intel)
+                            // Température : priorité Package/Tdie/Tctl/Die, valeur > 0 obligatoire
+                            // (LHM peut retourner 0.0 si le driver MSR/SMU n'est pas encore prêt)
                             if (x.SensorType == SensorType.Temperature && s.cpu_temp == null
-                                && (n.Contains("package") || n.Contains("tdie") || n.Contains("tctl")))
+                                && (x.Value ?? 0f) > 0f
+                                && (n.Contains("package") || n.Contains("tdie")
+                                    || n.Contains("tctl")  || n.Contains("cpu die")
+                                    || n.Contains("core (t")))
                                 s.cpu_temp = x.Value;
 
                             // Charge CPU globale
@@ -172,8 +151,8 @@ class Program
                                 && n.Contains("total"))
                                 s.cpu_usage = x.Value;
                         }
-                        // Fallbacks : premier capteur du bon type
-                        s.cpu_temp  ??= First(sens, SensorType.Temperature);
+                        // Fallbacks : premier capteur > 0 du bon type
+                        s.cpu_temp  ??= FirstPositive(sens, SensorType.Temperature);
                         s.cpu_usage ??= First(sens, SensorType.Load);
                         break;
 
@@ -288,10 +267,7 @@ class Program
             // Publication atomique du snapshot
             lock (_mu) _snap = s;
         }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[POLL] {ex.Message}");
-        }
+        catch { /* erreur capteur — ignorée, bridge détectera l'absence */ }
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -310,6 +286,14 @@ class Program
     {
         foreach (var s in sensors)
             if (s.SensorType == type) return s.Value;
+        return null;
+    }
+
+    /// <summary>Valeur du premier capteur du type demandé dont la valeur est > 0, ou null.</summary>
+    static float? FirstPositive(IEnumerable<ISensor> sensors, SensorType type)
+    {
+        foreach (var s in sensors)
+            if (s.SensorType == type && (s.Value ?? 0f) > 0f) return s.Value;
         return null;
     }
 
@@ -370,9 +354,8 @@ class Program
 
             WriteJson(ctx, 200, json);
         }
-        catch (Exception ex)
+        catch
         {
-            Console.Error.WriteLine($"[HTTP] {ex.Message}");
             try { ctx.Response.Abort(); } catch { /* ignoré */ }
         }
     }

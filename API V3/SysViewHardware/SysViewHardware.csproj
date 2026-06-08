@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <!-- WinExe = aucune fenêtre console — processus silencieux en arrière-plan -->
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <AssemblyName>SysViewHardware</AssemblyName>
     <RootNamespace>SysViewHardware</RootNamespace>
