@@ -262,18 +262,20 @@ class Program
                 }
             }
 
-            // ── Disques (espace système de fichiers via DriveInfo) ────────────────
+            // ── Disques C: à H: (espace système de fichiers via DriveInfo) ──────────
             foreach (var di in DriveInfo.GetDrives())
             {
                 try
                 {
                     if (di.DriveType != DriveType.Fixed || !di.IsReady) continue;
-                    double total = di.TotalSize          / 1_073_741_824.0;  // GiB
-                    double free  = di.AvailableFreeSpace / 1_073_741_824.0;  // GiB
+                    char lc = char.ToLowerInvariant(di.Name[0]);
+                    if (lc < 'c' || lc > 'h') continue;   // C: → H: uniquement
+                    double total = di.TotalSize          / 1_073_741_824.0;  // GiB → Go
+                    double free  = di.AvailableFreeSpace / 1_073_741_824.0;
                     double used  = total - free;
                     s.disks.Add(new DiskEntry
                     {
-                        letter   = char.ToLowerInvariant(di.Name[0]).ToString(),
+                        letter   = lc.ToString(),
                         used_gb  = Math.Round(used,  2),
                         total_gb = Math.Round(total, 2),
                         free_gb  = Math.Round(free,  2),

@@ -572,31 +572,22 @@ def _safe_disk_partitions(timeout_s: float = 5.0):
         return []
 
 
-_GiB_TO_TiB = 1024.0  # seuil de basculement Go → To (valeurs déjà en GiB)
-
-
 def _disk_from_lhm(entry: dict) -> dict:
-    """Construit une entrée DISKS depuis les données SysViewHardware (valeurs en GiB)."""
-    used_g = float(entry.get("used_gb",  0.0))
-    tot_g  = float(entry.get("total_gb", 0.0))
-    free_g = float(entry.get("free_gb",  0.0))
-    pct    = float(entry.get("percent",  0.0))
-
-    def _fmt(v):
-        return (round(v / 1024, 2), "To") if v >= _GiB_TO_TiB else (round(v, 2), "Go")
-
-    used_v, used_u = _fmt(used_g)
-    tot_v,  tot_u  = _fmt(tot_g)
-    free_v, free_u = _fmt(free_g)
+    """Construit une entrée DISKS depuis les données SysViewHardware (valeurs en GiB).
+    Unité fixe Go — cohérent avec le filtre C:→H: de SysViewHardware."""
+    used_g = round(float(entry.get("used_gb",  0.0)), 2)
+    tot_g  = round(float(entry.get("total_gb", 0.0)), 2)
+    free_g = round(float(entry.get("free_gb",  0.0)), 2)
+    pct    = round(float(entry.get("percent",  0.0)), 1)
     return {
-        "used_gb":    round(used_g,  2),
-        "total_gb":   round(tot_g,   2),
-        "free_gb":    round(free_g,  2),
-        "used_unit":  used_u,
-        "total_unit": tot_u,
-        "free_unit":  free_u,
-        "percent":    round(pct, 1),
-        "display":    f"{used_v:.2f}{used_u}/{tot_v:.0f}{tot_u}",
+        "used_gb":    used_g,
+        "total_gb":   tot_g,
+        "free_gb":    free_g,
+        "used_unit":  "Go",
+        "total_unit": "Go",
+        "free_unit":  "Go",
+        "percent":    pct,
+        "display":    f"{used_g:.2f}Go/{tot_g:.0f}Go",
     }
 
 
