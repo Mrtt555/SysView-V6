@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>SysViewHardware</AssemblyName>
+    <RootNamespace>SysViewHardware</RootNamespace>
+
+    <!-- Manifest embarqué → invite UAC au lancement (droits admin requis) -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- Build autonome : aucune dépendance runtime sur la machine cible -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- Les DLLs natives (WinRing0, HidSharp…) sont extraites au premier
+         lancement dans %TEMP%\SysViewHardware — comportement normal LHM.  -->
+
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Optimize>true</Optimize>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- LibreHardwareMonitorLib — capteurs CPU/GPU/RAM/Network/Storage    -->
+    <!-- https://www.nuget.org/packages/LibreHardwareMonitorLib             -->
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.4" />
+  </ItemGroup>
+
+</Project>

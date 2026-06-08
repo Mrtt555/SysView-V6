@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configuration — Aether</title>
+  <link rel="icon" href="/frontend/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/frontend/manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/frontend/style.css?v=9">
+  <style>
+    body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
+    #city-dropdown { position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:999; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+  <!-- HEADER -->
+  <header style="background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 100%)">
+    <div class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold text-white">🌤️ Aether</h1>
+        <p id="hdr-sub" class="text-blue-200 text-sm mt-0.5">Tableau de bord météo V 1.1 — Propulsé par Astralcodes</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="dark-toggle"
+          class="bg-white/10 hover:bg-white/20 border border-white/25 text-white rounded-lg
+                 w-9 h-9 flex items-center justify-center text-base cursor-pointer transition"
+          title="Thème sombre">🌙</button>
+        <select id="lang-sw" class="bg-white/10 border border-white/25 text-white rounded-lg px-3 py-1.5 text-sm cursor-pointer">
+          <option value="fr">🇫🇷 Français</option>
+          <option value="en">🇬🇧 English</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <!-- NAV -->
+  <nav class="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-50">
+    <div class="max-w-5xl mx-auto px-6 flex">
+      <a href="/" class="nav-link active">⚙️ <span id="tl-cfg">Configuration</span></a>
+      <a href="/live" class="nav-link">📡 <span id="tl-live">Résultats Live</span></a>
+      <a href="/documentation" class="nav-link">📖 <span id="tl-docs">Documentation</span></a>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="max-w-5xl mx-auto px-6 py-7 space-y-5">
+
+    <!-- Localisation -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+      <h2 class="font-semibold text-base text-slate-700 mb-4">📍 <span id="lbl-loc">Localisation</span></h2>
+      <div class="relative">
+        <div class="relative flex items-center">
+          <span class="absolute left-4 text-slate-400">🔍</span>
+          <input id="city-input" type="text" autocomplete="off" spellcheck="false"
+            placeholder="Rechercher une ville..."
+            class="w-full pl-10 pr-12 py-3 rounded-xl border border-slate-200 text-sm
+                   focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                   transition bg-slate-50 focus:bg-white">
+          <div id="search-spin" style="display:none" class="absolute right-4 w-4 h-4 rounded-full"
+            style="border:2px solid #e2e8f0;border-top-color:#3b82f6;animation:spin .7s linear infinite"></div>
+        </div>
+        <div id="city-dropdown" style="display:none"
+          class="bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden">
+          <div id="city-list"></div>
+        </div>
+      </div>
+      <div class="mt-3 flex flex-wrap items-center justify-between gap-2 min-h-6">
+        <div id="city-info" style="display:none" class="flex items-center gap-3 text-sm">
+          <span id="city-disp" class="font-medium text-slate-700"></span>
+          <span class="bg-slate-100 rounded px-2 py-0.5 text-xs font-mono text-slate-500">lat <span id="lat-d"></span></span>
+          <span class="bg-slate-100 rounded px-2 py-0.5 text-xs font-mono text-slate-500">lon <span id="lon-d"></span></span>
+        </div>
+        <div id="save-status" class="text-xs"></div>
+      </div>
+    </div>
+
+    <!-- Modèle de prévision -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+      <h2 class="font-semibold text-base text-slate-700 mb-1">🛰️ <span id="lbl-model">Modèle de prévision</span></h2>
+      <p id="lbl-model-d" class="text-xs text-slate-400 mb-4">Choisissez la source de données météorologiques.</p>
+      <select id="model-sel"
+        class="w-full py-2.5 px-3 rounded-xl border border-slate-200 text-sm
+               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+               transition bg-slate-50 focus:bg-white text-slate-700">
+        <option value="best_match">⏳ Chargement...</option>
+      </select>
+      <div id="model-info" style="display:none;margin-top:12px;flex-wrap:wrap;gap:8px;align-items:center"></div>
+      <div id="model-rec" style="display:none;margin-top:10px"></div>
+    </div>
+
+    <!-- Paramètres Météo -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+      <div class="flex items-start justify-between mb-1">
+        <h2 class="font-semibold text-base text-slate-700">🌤️ <span id="lbl-wp">Paramètres Météo</span></h2>
+        <div class="flex gap-2 text-xs">
+          <button id="w-all" class="text-blue-600 hover:underline">Tout</button>
+          <span class="text-slate-300">|</span>
+          <button id="w-none" class="text-slate-400 hover:underline">Aucun</button>
+        </div>
+      </div>
+      <p id="lbl-wd" class="text-xs text-slate-400 mb-4">Sélectionnez les paramètres météorologiques à exposer via l'API.</p>
+      <div id="weather-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px"></div>
+    </div>
+
+    <!-- Paramètres Environnement -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+      <div class="flex items-start justify-between mb-1">
+        <h2 class="font-semibold text-base text-slate-700">🌿 <span id="lbl-ep">Paramètres Environnement</span></h2>
+        <div class="flex gap-2 text-xs">
+          <button id="a-all" class="text-blue-600 hover:underline">Tout</button>
+          <span class="text-slate-300">|</span>
+          <button id="a-none" class="text-slate-400 hover:underline">Aucun</button>
+        </div>
+      </div>
+      <p id="lbl-ed" class="text-xs text-slate-400 mb-4">Sélectionnez les paramètres de qualité de l'air et pollens à exposer via l'API.</p>
+      <div id="air-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px"></div>
+    </div>
+
+    <!-- Webhook -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+      <h2 class="font-semibold text-base text-slate-700 mb-1">🔗 <span id="lbl-wh">Webhook</span></h2>
+      <p id="lbl-wh-d" class="text-xs text-slate-400 mb-4"></p>
+      <input id="wh-url" type="url"
+        class="w-full py-2.5 px-3 rounded-xl border border-slate-200 text-sm mb-2
+               focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent
+               transition bg-slate-50 focus:bg-white text-slate-700">
+      <p id="lbl-wh-hint" class="text-xs text-slate-400 mb-3"></p>
+      <div class="flex items-center gap-3">
+        <button id="wh-test"
+          class="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white
+                 text-sm font-medium px-4 py-2 rounded-xl transition">
+          🚀 <span id="lbl-wh-btn">Envoyer maintenant</span>
+        </button>
+        <span id="wh-status" class="text-xs"></span>
+      </div>
+    </div>
+
+    <!-- Limitation de débit -->
+    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-6">
+      <h2 class="font-semibold text-base text-amber-800 mb-1">⚡ <span id="lbl-rl-cfg">Limitation de débit</span></h2>
+      <p id="lbl-rl-d" class="text-xs text-amber-700 mb-4"></p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-amber-800 mb-1.5" id="lbl-rl-s">Recherche ville (req/min)</label>
+          <input id="rl-search" type="number" min="1" max="7000" value="10"
+            class="w-full py-2 px-3 rounded-xl border border-amber-200 bg-white text-sm
+                   focus:outline-none focus:ring-2 focus:ring-amber-400 text-slate-700">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-amber-800 mb-1.5" id="lbl-rl-l">Données live (req/min)</label>
+          <input id="rl-live" type="number" min="1" max="7000" value="20"
+            class="w-full py-2 px-3 rounded-xl border border-amber-200 bg-white text-sm
+                   focus:outline-none focus:ring-2 focus:ring-amber-400 text-slate-700">
+        </div>
+      </div>
+      <p class="text-xs text-amber-600 mt-3">⚠️ <span id="lbl-rl-max">Maximum : 7 000 req/min</span></p>
+    </div>
+
+  </main>
+
+  <footer class="text-center py-8 space-y-1">
+    <p class="text-sm font-semibold text-slate-500">🌤️ Aether</p>
+    <p class="text-xs text-slate-400">
+      Propulsé par <span class="text-blue-400 font-medium">Astralcodes</span>
+      <span class="mx-1.5 text-slate-300">·</span>
+      <span class="font-medium text-slate-500">Mrtt555</span>
+      <span class="mx-1.5 text-slate-300">·</span>
+      Tous droits réservés &copy; 2026
+    </p>
+    <p class="text-xs text-slate-300">
+      données <a href="https://open-meteo.com" target="_blank" class="text-blue-400 hover:underline">Open-Meteo</a>
+    </p>
+  </footer>
+
+  <script src="/frontend/app.js?v=11"></script>
+  <script>initConfigPage();</script>
+</body>
+</html>

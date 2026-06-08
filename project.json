@@ -1,0 +1,467 @@
+﻿{
+	"contentrating" : "Everyone",
+	"description" : "",
+	"file" : "SysView.html",
+	"general" : 
+	{
+		"properties" : 
+		{
+			"accent2_color" : 
+			{
+				"index" : 6,
+				"order" : 106,
+				"text" : "Secondary accent color (lighter)",
+				"type" : "color",
+				"value" : "0.784 0.549 1"
+			},
+			"accent_color" : 
+			{
+				"index" : 5,
+				"order" : 105,
+				"text" : "Accent color",
+				"type" : "color",
+				"value" : "0.627 0.392 1"
+			},
+			"bg_color" : 
+			{
+				"index" : 7,
+				"order" : 107,
+				"text" : "Background color",
+				"type" : "color",
+				"value" : "0.031 0.024 0.071"
+			},
+			"bg_image" : 
+			{
+				"filepattern" : "*.jpg *.jpeg *.png *.webp *.gif *.mp4 *.webm *.mkv *.mov",
+				"index" : 1,
+				"order" : 101,
+				"text" : "Background image or video",
+				"type" : "file",
+				"value" : ""
+			},
+			"city_name" :
+			{
+				"condition" : "weather_manual.value == true",
+				"index" : 15,
+				"order" : 115,
+				"text" : "City name (geocoded automatically)",
+				"type" : "textinput",
+				"value" : "HALLUIN"
+			},
+			"temp_decimal" :
+			{
+				"index" : 46,
+				"order" : 116,
+				"text" : "Show temperature decimal (ex: 15.6 au lieu de 16)",
+				"type" : "bool",
+				"value" : true
+			},
+"cpu_temp_crit" : 
+			{
+				"condition" : "show_cpu.value == true && show_monitoring.value == true",
+				"index" : 23,
+				"max" : 110,
+				"min" : 60,
+				"order" : 123,
+				"text" : "CPU — critical temp (°C, red)",
+				"type" : "slider",
+				"value" : 91
+			},
+			"cpu_temp_hot" : 
+			{
+				"condition" : "show_cpu.value == true && show_monitoring.value == true",
+				"index" : 22,
+				"max" : 105,
+				"min" : 50,
+				"order" : 122,
+				"text" : "CPU — warning temp (°C, orange)",
+				"type" : "slider",
+				"value" : 80
+			},
+			"gpu_temp_crit" : 
+			{
+				"condition" : "show_gpu.value == true && show_monitoring.value == true",
+				"index" : 25,
+				"max" : 110,
+				"min" : 60,
+				"order" : 125,
+				"text" : "GPU — critical temp (°C, red)",
+				"type" : "slider",
+				"value" : 95
+			},
+			"gpu_temp_hot" : 
+			{
+				"condition" : "show_gpu.value == true && show_monitoring.value == true",
+				"index" : 24,
+				"max" : 105,
+				"min" : 50,
+				"order" : 124,
+				"text" : "GPU — warning temp (°C, orange)",
+				"type" : "slider",
+				"value" : 80
+			},
+			"language" : 
+			{
+				"index" : 0,
+				"options" : 
+				[
+					{
+						"label" : "Français",
+						"value" : "fr"
+					},
+					{
+						"label" : "English",
+						"value" : "en"
+					}
+				],
+				"order" : 100,
+				"text" : "Language",
+				"type" : "combo",
+				"value" : "fr"
+			},
+			"network_iface" : 
+			{
+				"condition" : "show_net.value == true && show_monitoring.value == true",
+				"index" : 33,
+				"options" : 
+				[
+					{
+						"label" : "Auto (all interfaces)",
+						"value" : "auto"
+					},
+					{
+						"label" : "Ethernet",
+						"value" : "eth"
+					},
+					{
+						"label" : "Wi-Fi",
+						"value" : "wifi"
+					}
+				],
+				"order" : 133,
+				"text" : "Network interface to display",
+				"type" : "combo",
+				"value" : "auto"
+			},
+			"panel_opacity" : 
+			{
+				"index" : 11,
+				"max" : 100,
+				"min" : 0,
+				"order" : 111,
+				"text" : "Opacity — panels, cards, shadows (0=invisible, 100=solid)",
+				"type" : "slider",
+				"value" : 55
+			},
+			"schemecolor" : 
+			{
+				"order" : 0,
+				"text" : "ui_browse_properties_scheme_color",
+				"type" : "color",
+				"value" : "0 0 0"
+			},
+			"sep1" : 
+			{
+				"index" : 2,
+				"order" : 102,
+				"text" : "=== COLORS & STYLE ===",
+				"type" : "text",
+				"value" : ""
+			},
+			"sep2" : 
+			{
+				"index" : 12,
+				"order" : 112,
+				"text" : "=== LOCATION & WEATHER ===",
+				"type" : "text",
+				"value" : ""
+			},
+			"sep3" : 
+			{
+				"index" : 26,
+				"order" : 126,
+				"text" : "=== PANELS TO DISPLAY ===",
+				"type" : "text",
+				"value" : ""
+			},
+			"sep_temp" : 
+			{
+				"index" : 21,
+				"order" : 121,
+				"text" : "=== TEMPERATURE THRESHOLDS ===",
+				"type" : "text",
+				"value" : ""
+			},
+			"show_city" : 
+			{
+				"index" : 13,
+				"order" : 113,
+				"text" : "Show city and country under clock / in weather panel",
+				"type" : "bool",
+				"value" : true
+			},
+			"show_cpu" : 
+			{
+				"condition" : "show_monitoring.value == true",
+				"index" : 27,
+				"order" : 127,
+				"text" : "Show CPU block",
+				"type" : "bool",
+				"value" : true
+			},
+			"show_disk_c" : 
+			{
+				"condition" : "show_disks.value == true",
+				"index" : 35,
+				"order" : 135,
+				"text" : "  └ Disk C:",
+				"type" : "bool",
+				"value" : true
+			},
+			"show_disk_d" :
+			{
+				"condition" : "show_disks.value == true",
+				"index" : 36,
+				"order" : 136,
+				"text" : "  └ Disk D:",
+				"type" : "bool",
+				"value" : false
+			},
+			"show_disk_e" :
+			{
+				"condition" : "show_disks.value == true",
+				"index" : 37,
+				"order" : 137,
+				"text" : "  └ Disk E:",
+				"type" : "bool",
+				"value" : false
+			},
+			"show_disk_f" : 
+			{
+				"condition" : "show_disks.value == true",
+				"index" : 38,
+				"order" : 138,
+				"text" : "  └ Disk F:",
+				"type" : "bool",
+				"value" : false
+			},
+			"show_disk_g" : 
+			{
+				"condition" : "show_disks.value == true",
+				"index" : 39,
+				"order" : 139,
+				"text" : "  └ Disk G:",
+				"type" : "bool",
+				"value" : false
+			},
+			"show_disk_h" :
+			{
+				"condition" : "show_disks.value == true",
+				"index" : 40,
+				"order" : 140,
+				"text" : "  └ Disk H:",
+				"type" : "bool",
+				"value" : false
+			},
+			"show_disk_free" :
+			{
+				"condition" : "show_disks.value == true",
+				"index" : 45,
+				"order" : 1401,
+				"text" : "  └ Show free space on disks",
+				"type" : "bool",
+				"value" : true
+			},
+			"show_disks" : 
+			{
+				"index" : 34,
+				"order" : 134,
+				"text" : "Show Storage panel",
+				"type" : "bool",
+				"value" : true
+			},
+			"show_gpu" : 
+			{
+				"condition" : "show_monitoring.value == true",
+				"index" : 28,
+				"order" : 128,
+				"text" : "Show GPU block",
+				"type" : "bool",
+				"value" : true
+			},
+			"show_media" : 
+			{
+				"index" : 41,
+				"order" : 141,
+				"text" : "Show Media player (bottom bar)",
+				"type" : "bool",
+				"value" : true
+			},
+			"show_meteo" : 
+			{
+				"index" : 42,
+				"order" : 142,
+				"text" : "Show Weather panel",
+				"type" : "bool",
+				"value" : true
+			},
+			"show_monitoring" : 
+			{
+				"index" : 29,
+				"order" : 129,
+				"text" : "Show Monitoring panel (CPU/GPU/RAM/VRAM/Network)",
+				"type" : "bool",
+				"value" : true
+			},
+			"show_net" : 
+			{
+				"condition" : "show_monitoring.value == true",
+				"index" : 32,
+				"order" : 132,
+				"text" : "Show Network block",
+				"type" : "bool",
+				"value" : true
+			},
+			"show_ram" : 
+			{
+				"condition" : "show_monitoring.value == true",
+				"index" : 31,
+				"order" : 131,
+				"text" : "Show RAM block",
+				"type" : "bool",
+				"value" : true
+			},
+			"show_vram" : 
+			{
+				"condition" : "show_monitoring.value == true",
+				"index" : 30,
+				"order" : 130,
+				"text" : "Show VRAM block",
+				"type" : "bool",
+				"value" : true
+			},
+			"show_weather_source" : 
+			{
+				"condition" : "show_meteo.value == true",
+				"index" : 43,
+				"order" : 143,
+				"text" : "  └ Show weather source badge (Open-Meteo)",
+				"type" : "bool",
+				"value" : true
+			},
+			"taskbar_offset" : 
+			{
+				"index" : 4,
+				"max" : 120,
+				"min" : 0,
+				"order" : 104,
+				"text" : "Bottom bar height above Windows taskbar (px)",
+				"type" : "slider",
+				"value" : 95
+			},
+			"temp_unit" : 
+			{
+				"index" : 9,
+				"options" : 
+				[
+					{
+						"label" : "°C (Celsius)",
+						"value" : "c"
+					},
+					{
+						"label" : "°F (Fahrenheit)",
+						"value" : "f"
+					}
+				],
+				"order" : 109,
+				"text" : "Temperature unit",
+				"type" : "combo",
+				"value" : "c"
+			},
+			"text_color" : 
+			{
+				"index" : 8,
+				"order" : 108,
+				"text" : "Text color",
+				"type" : "color",
+				"value" : "0.824 0.784 0.902"
+			},
+			"time_format" : 
+			{
+				"index" : 10,
+				"options" : 
+				[
+					{
+						"label" : "24h",
+						"value" : "24h"
+					},
+					{
+						"label" : "12h AM/PM",
+						"value" : "12h"
+					}
+				],
+				"order" : 110,
+				"text" : "Clock format",
+				"type" : "combo",
+				"value" : "24h"
+			},
+			"tuto_5" : 
+			{
+				"index" : 44,
+				"order" : 144,
+				"text" : "GitHub: github.com/Mrtt555/sysview-wallpaper-engine",
+				"type" : "text",
+				"value" : ""
+			},
+			"ui_scale" : 
+			{
+				"index" : 3,
+				"max" : 250,
+				"min" : 50,
+				"order" : 103,
+				"text" : "UI Scale (100=normal, 200=double)",
+				"type" : "slider",
+				"value" : 180
+			},
+			"weather_interval" :
+			{
+				"index" : 20,
+				"max" : 15,
+				"min" : 1,
+				"order" : 120,
+				"text" : "Weather refresh interval (minutes)",
+				"type" : "slider",
+				"value" : 10
+			},
+			"weather_manual" :
+			{
+				"index" : 14,
+				"order" : 114,
+				"text" : "Set custom weather location",
+				"type" : "bool",
+				"value" : false
+			},
+			"weather_note" : 
+			{
+				"index" : 19,
+				"order" : 119,
+				"text" : "Enter your city and country above. The bridge geocodes automatically via Aether.",
+				"type" : "text",
+				"value" : ""
+			}
+		},
+		"supportsaudioprocessing" : true
+	},
+	"preview" : "preview.gif",
+	"ratingsex" : "none",
+	"ratingviolence" : "none",
+	"snapshotformat" : 0,
+	"snapshotoverlay" : "",
+	"tags" : [ "Technology" ],
+	"title" : "SysView V6",
+	"type" : "web",
+	"version" : 1,
+	"visibility" : "public",
+	"workshopid" : "3728687216",
+	"workshopurl" : "steam://url/CommunityFilePage/3728687216"
+}

@@ -1,0 +1,19 @@
+{
+  "name": "API Météo & Environnement",
+  "short_name": "Météo",
+  "description": "Dashboard météo & qualité de l'air en temps réel — Astralcodes",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#2563eb",
+  "background_color": "#f8fafc",
+  "icons": [
+    {
+      "src": "/frontend/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

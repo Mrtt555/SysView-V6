@@ -1,0 +1,22 @@
+# ── Binaires compilés (.NET) ──────────────────────────────────
+*.exe
+*.dll
+*.pdb
+obj/
+bin/
+
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+
+# ── Config locale (données personnelles : ville / coordonnées) ─
+API V3/runtime_config.json
+
+# ── Runtime bridge ────────────────────────────────────────────
+API V3/bridge.pid
+API V3/logs/
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
