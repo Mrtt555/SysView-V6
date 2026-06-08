@@ -26,9 +26,21 @@ sealed class Snap
     public float?  gpu_temp, gpu_usage;
     public float?  vram_used, vram_total;   // MB
     public float?  ram_usage;               // %
+    public int     ram_used_mb, ram_total_mb; // MiB (depuis LHM Data sensors)
     // Clés réseau identiques aux attentes du bridge (WiFi = net_dl_kb / net_ul_kb)
     public double  net_dl_kb,     net_ul_kb;      // Wi-Fi  KB/s
     public double  net_eth_dl_kb, net_eth_ul_kb;  // Ethernet KB/s
+    // Disques (DriveInfo — espace système de fichiers, valeurs en GiB)
+    public List<DiskEntry> disks = new();
+}
+
+// ─── Entrée disque ────────────────────────────────────────────────────────────
+
+sealed class DiskEntry
+{
+    public string letter  = "";
+    public double used_gb, total_gb, free_gb;
+    public float  percent;
 }
 
 // ─── Visitor LHM ─────────────────────────────────────────────────────────────
@@ -198,8 +210,21 @@ class Program
 
                     // ── RAM ───────────────────────────────────────────────────
                     case HardwareType.Memory:
-                        // LHM Memory : sensor "Memory" type Load = %
                         s.ram_usage = First(sens, SensorType.Load);
+                        // RAM absolue via SensorType.Data : "Memory Used" / "Memory Available" (GiB)
+                        float? ramUsed = null, ramAvail = null;
+                        foreach (var x in sens)
+                        {
+                            if (x.SensorType != SensorType.Data) continue;
+                            string n = x.Name.ToLowerInvariant();
+                            if (ramUsed  == null && n.Contains("memory") && n.Contains("used")
+                                                 && !n.Contains("virtual")) ramUsed  = x.Value;
+                            if (ramAvail == null && n.Contains("memory") && n.Contains("available")
+                                                 && !n.Contains("virtual")) ramAvail = x.Value;
+                        }
+                        if (ramUsed  != null) s.ram_used_mb  = (int)(ramUsed.Value  * 1024f);
+                        if (ramUsed  != null && ramAvail != null)
+                            s.ram_total_mb = (int)((ramUsed.Value + ramAvail.Value) * 1024f);
                         break;
 
                     // ── Réseau ────────────────────────────────────────────────
@@ -235,6 +260,27 @@ class Program
                         break;
                     }
                 }
+            }
+
+            // ── Disques (espace système de fichiers via DriveInfo) ────────────────
+            foreach (var di in DriveInfo.GetDrives())
+            {
+                try
+                {
+                    if (di.DriveType != DriveType.Fixed || !di.IsReady) continue;
+                    double total = di.TotalSize          / 1_073_741_824.0;  // GiB
+                    double free  = di.AvailableFreeSpace / 1_073_741_824.0;  // GiB
+                    double used  = total - free;
+                    s.disks.Add(new DiskEntry
+                    {
+                        letter   = char.ToLowerInvariant(di.Name[0]).ToString(),
+                        used_gb  = Math.Round(used,  2),
+                        total_gb = Math.Round(total, 2),
+                        free_gb  = Math.Round(free,  2),
+                        percent  = total > 0 ? MathF.Round((float)(used / total * 100.0), 1) : 0f,
+                    });
+                }
+                catch { /* lecteur inaccessible ou non prêt — ignoré */ }
             }
 
             // Publication atomique du snapshot
@@ -298,7 +344,7 @@ class Program
                 : "\"" + v.Replace("\\", "\\\\").Replace("\"", "\\\"")
                           .Replace("\r", "").Replace("\n", "") + "\"";
 
-            // JSON avec les clés exactement attendues par SysViewBridge._lhm_parse()
+            // JSON avec les clés exactement attendues par SysViewBridge
             string json =
                 "{\n" +
                 $"  \"cpu_name\":      {J(s.cpu_name)},\n" +
@@ -310,10 +356,13 @@ class Program
                 $"  \"vram_used\":     {F(s.vram_used)},\n" +
                 $"  \"vram_total\":    {F(s.vram_total)},\n" +
                 $"  \"ram_usage\":     {F(s.ram_usage)},\n" +
+                $"  \"ram_used_mb\":   {s.ram_used_mb},\n" +
+                $"  \"ram_total_mb\":  {s.ram_total_mb},\n" +
                 $"  \"net_dl_kb\":     {D(s.net_dl_kb)},\n" +
                 $"  \"net_ul_kb\":     {D(s.net_ul_kb)},\n" +
                 $"  \"net_eth_dl_kb\": {D(s.net_eth_dl_kb)},\n" +
                 $"  \"net_eth_ul_kb\": {D(s.net_eth_ul_kb)},\n" +
+                $"  \"disks\":         {DiskJson(s.disks)},\n" +
                 "  \"online\":        true\n" +
                 "}";
 
@@ -324,6 +373,26 @@ class Program
             Console.Error.WriteLine($"[HTTP] {ex.Message}");
             try { ctx.Response.Abort(); } catch { /* ignoré */ }
         }
+    }
+
+    // ─── Sérialisation des disques ────────────────────────────────────────────
+
+    static string DiskJson(List<DiskEntry> disks)
+    {
+        if (disks.Count == 0) return "{}";
+        var sb = new StringBuilder("{\n");
+        for (int i = 0; i < disks.Count; i++)
+        {
+            var d = disks[i];
+            sb.Append($"    \"{d.letter}\": {{")
+              .Append($"\"used_gb\":{d.used_gb.ToString("F2", IC)},")
+              .Append($"\"total_gb\":{d.total_gb.ToString("F2", IC)},")
+              .Append($"\"free_gb\":{d.free_gb.ToString("F2", IC)},")
+              .Append($"\"percent\":{d.percent.ToString("F1", IC)}}}");
+            if (i < disks.Count - 1) sb.Append(',');
+            sb.Append('\n');
+        }
+        return sb.Append("  }").ToString();
     }
 
     static void WriteJson(HttpListenerContext ctx, int status, string body)

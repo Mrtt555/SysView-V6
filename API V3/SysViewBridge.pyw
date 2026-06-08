@@ -529,8 +529,9 @@ def hardware_loop():
                     "vram_used":   int(lhm.get("vram_used")  or 0),
                     "vram_total":  int(lhm.get("vram_total") or 0),
                     "ram_usage":   round(lhm.get("ram_usage") or mem.percent, 1),
-                    "ram_used_mb": mem.used   // (1024 * 1024),
-                    "ram_total_mb":mem.total  // (1024 * 1024),
+                    # LHM en primaire (SysViewHardware Data sensors), psutil en fallback
+                    "ram_used_mb":  lhm.get("ram_used_mb")  or (mem.used  // (1024 * 1024)),
+                    "ram_total_mb": lhm.get("ram_total_mb") or (mem.total // (1024 * 1024)),
                     "net_dl_kb":   round(dl_kb, 1),
                     "net_ul_kb":   round(ul_kb, 1),
                     "lhm_online":  _LHM_ONLINE,
@@ -571,8 +572,37 @@ def _safe_disk_partitions(timeout_s: float = 5.0):
         return []
 
 
+_GiB_TO_TiB = 1024.0  # seuil de basculement Go → To (valeurs déjà en GiB)
+
+
+def _disk_from_lhm(entry: dict) -> dict:
+    """Construit une entrée DISKS depuis les données SysViewHardware (valeurs en GiB)."""
+    used_g = float(entry.get("used_gb",  0.0))
+    tot_g  = float(entry.get("total_gb", 0.0))
+    free_g = float(entry.get("free_gb",  0.0))
+    pct    = float(entry.get("percent",  0.0))
+
+    def _fmt(v):
+        return (round(v / 1024, 2), "To") if v >= _GiB_TO_TiB else (round(v, 2), "Go")
+
+    used_v, used_u = _fmt(used_g)
+    tot_v,  tot_u  = _fmt(tot_g)
+    free_v, free_u = _fmt(free_g)
+    return {
+        "used_gb":    round(used_g,  2),
+        "total_gb":   round(tot_g,   2),
+        "free_gb":    round(free_g,  2),
+        "used_unit":  used_u,
+        "total_unit": tot_u,
+        "free_unit":  free_u,
+        "percent":    round(pct, 1),
+        "display":    f"{used_v:.2f}{used_u}/{tot_v:.0f}{tot_u}",
+    }
+
+
 def disk_loop():
-    """Met à jour les données disques toutes les 10s via psutil."""
+    """Met à jour les données disques toutes les 10s.
+    SysViewHardware (DriveInfo) en primaire — psutil en fallback."""
     GiB = 1_073_741_824
     TiB = 1_099_511_627_776
     log_info("DISK", "Thread disques démarré")
@@ -580,47 +610,55 @@ def disk_loop():
 
     while True:
         try:
-            for part in _safe_disk_partitions():
-                mp = part.mountpoint      # ex : "C:\\"
-                if len(mp) < 2 or mp[1] != ":":
-                    continue              # ignorer les points de montage non-Windows
-                letter = mp[0].lower()
-                try:
-                    # disk_usage() peut se bloquer si le lecteur réseau/USB est gelé
-                    # → on soumet dans l'executor avec un timeout de 3s.
-                    try:
-                        u = _disk_executor.submit(psutil.disk_usage, mp).result(timeout=3.0)
-                    except concurrent.futures.TimeoutError:
-                        log_warn("DISK", f"disk_usage({mp!r}) timeout — lecteur gelé, ignoré")
-                        continue
-                    used_v = u.used  / TiB if u.used  >= TiB else u.used  / GiB
-                    tot_v  = u.total / TiB if u.total >= TiB else u.total / GiB
-                    free_v = u.free  / TiB if u.free  >= TiB else u.free  / GiB
-                    used_u = "To" if u.used  >= TiB else "Go"
-                    tot_u  = "To" if u.total >= TiB else "Go"
-                    free_u = "To" if u.free  >= TiB else "Go"
-                    display = f"{used_v:.2f}{used_u}/{tot_v:.0f}{tot_u}"
-                    info = {
-                        "used_gb":   round(used_v, 2),
-                        "total_gb":  round(tot_v,  2),
-                        "free_gb":   round(free_v, 2),
-                        "used_unit": used_u,
-                        "total_unit":tot_u,
-                        "free_unit": free_u,
-                        "percent":   u.percent,
-                        "display":   display,
-                    }
+            # ── Primaire : SysViewHardware (DriveInfo) ────────────────────────
+            lhm_disks = get_lhm().get("disks")
+            if lhm_disks and isinstance(lhm_disks, dict):
+                for letter, entry in lhm_disks.items():
+                    info    = _disk_from_lhm(entry)
+                    cur_pct = info["percent"]
                     with perf_lock:
                         DISKS[letter] = info
-                    cur_pct = round(u.percent, 1)
                     if _prev.get(letter) != cur_pct:
                         _prev[letter] = cur_pct
-                        log_ok(
-                            "DISK",
-                            f"{letter.upper()}: {display} ({cur_pct}%)",
-                        )
-                except Exception as e:
-                    log_warn("DISK", f"disk_usage({mp!r}) erreur : {e}")
+                        log_ok("DISK", f"[HW] {letter.upper()}: {info['display']} ({cur_pct}%)")
+            else:
+                # ── Fallback : psutil ─────────────────────────────────────────
+                for part in _safe_disk_partitions():
+                    mp = part.mountpoint      # ex : "C:\\"
+                    if len(mp) < 2 or mp[1] != ":":
+                        continue
+                    letter = mp[0].lower()
+                    try:
+                        try:
+                            u = _disk_executor.submit(psutil.disk_usage, mp).result(timeout=3.0)
+                        except concurrent.futures.TimeoutError:
+                            log_warn("DISK", f"disk_usage({mp!r}) timeout — lecteur gelé, ignoré")
+                            continue
+                        used_v = u.used  / TiB if u.used  >= TiB else u.used  / GiB
+                        tot_v  = u.total / TiB if u.total >= TiB else u.total / GiB
+                        free_v = u.free  / TiB if u.free  >= TiB else u.free  / GiB
+                        used_u = "To" if u.used  >= TiB else "Go"
+                        tot_u  = "To" if u.total >= TiB else "Go"
+                        free_u = "To" if u.free  >= TiB else "Go"
+                        display = f"{used_v:.2f}{used_u}/{tot_v:.0f}{tot_u}"
+                        info = {
+                            "used_gb":   round(used_v, 2),
+                            "total_gb":  round(tot_v,  2),
+                            "free_gb":   round(free_v, 2),
+                            "used_unit": used_u,
+                            "total_unit":tot_u,
+                            "free_unit": free_u,
+                            "percent":   u.percent,
+                            "display":   display,
+                        }
+                        with perf_lock:
+                            DISKS[letter] = info
+                        cur_pct = round(u.percent, 1)
+                        if _prev.get(letter) != cur_pct:
+                            _prev[letter] = cur_pct
+                            log_ok("DISK", f"{letter.upper()}: {display} ({cur_pct}%)")
+                    except Exception as e:
+                        log_warn("DISK", f"disk_usage({mp!r}) erreur : {e}")
         except Exception as e:
             log_err("DISK", traceback.format_exc().strip())
 
