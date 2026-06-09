@@ -32,9 +32,9 @@ public sealed class BridgeServer
     private readonly RuntimeConfig   _cfg;
     private readonly double          _startTime;
 
-    // Compteurs de requêtes (pour les logs périodiques)
-    private long _totalRequests  = 0;
-    private long _rateLimitHits  = 0;
+    // Compteurs de requêtes
+    private long _totalRequests = 0;
+    private long _rateLimitHits = 0;
 
     public BridgeServer(HardwareService hw, DiskService disk, WeatherService weather,
                         MediaState media, RuntimeConfig cfg)
@@ -290,8 +290,7 @@ public sealed class BridgeServer
             var snap = _hw.GetSnapshot();
             var w    = _weather.GetData();
             var m    = _media.Get();
-            double now    = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            double extAge = _media.ExtLastPost > 0 ? now - _media.ExtLastPost : -1;
+            double now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
             string Uptime(double s) {
                 int si = (int)s, h = si / 3600, mn = si % 3600 / 60, sc = si % 60;
@@ -305,12 +304,12 @@ public sealed class BridgeServer
                 name   = "SysView Bridge v6",
                 uptime = Uptime(now - _startTime),
                 port   = PORT,
-                total_requests = _totalRequests,
+                total_requests  = _totalRequests,
                 rate_limit_hits = _rateLimitHits,
                 modules = new {
-                    lhm     = snap.LhmOnline   ? "ok" : "offline",
-                    weather = w.Temp.HasValue  ? "ok" : "pending",
-                    model   = w.WeatherModelId ?? _cfg.WeatherModel,
+                    lhm        = snap.LhmOnline  ? "ok" : "offline",
+                    weather    = w.Temp.HasValue ? "ok" : "pending",
+                    model      = w.WeatherModelId ?? _cfg.WeatherModel,
                     model_name = w.AetherModel ?? "—",
                 },
                 endpoints = new {
@@ -319,37 +318,8 @@ public sealed class BridgeServer
                     weather = w.Temp.HasValue ? "ok" : "pending",
                     media   = mediaState,
                 },
-                extension = new {
-                    active      = extAge >= 0 && extAge < 10,
-                    last_seen_s = extAge >= 0 ? (object)(int)extAge : null,
-                },
             });
         }).RequireRateLimiting("config");
-
-        // ─────────────────────────────────────────────────────────────────────
-        // POST /v1/media  (extension Chrome)
-        // ─────────────────────────────────────────────────────────────────────
-        app.MapPost("/v1/media", async (HttpContext ctx) =>
-        {
-            try
-            {
-                var d = await JsonSerializer.DeserializeAsync<JsonElement>(ctx.Request.Body);
-                string title  = d.TryGetProperty("title",     out var t)  ? t.GetString()  ?? "" : "";
-                string artist = d.TryGetProperty("artist",    out var a)  ? a.GetString()  ?? "" : "";
-                bool   play   = d.TryGetProperty("playing",   out var pl) && pl.GetBoolean();
-                double pos    = d.TryGetProperty("position",  out var po) ? po.GetDouble() : 0.0;
-                double dur    = d.TryGetProperty("duration",  out var du) ? du.GetDouble() : 0.0;
-                string thumb  = d.TryGetProperty("thumb_url", out var th) ? th.GetString() ?? "" : "";
-
-                _media.Update(title, artist, play, pos, dur, thumb);
-                return Results.Json(new { ok = true });
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("Bridge", "POST /v1/media — erreur de désérialisation", ex);
-                return Results.Json(new { error = ex.Message }, statusCode: 400);
-            }
-        }).RequireRateLimiting("api");
 
         // ─────────────────────────────────────────────────────────────────────
         // POST /v1/config  (Wallpaper Engine / extension Chrome)
@@ -446,7 +416,7 @@ public sealed class BridgeServer
 
         Logger.Info("Bridge", $"Démarrage du serveur HTTP sur http://127.0.0.1:{PORT}");
         Logger.Info("Bridge", "Endpoints : GET /v1/health  /v1/perf  /v1/weather  /v1/media  /v1/status  /v1/models");
-        Logger.Info("Bridge", "Endpoints : POST /v1/media  /v1/config");
+        Logger.Info("Bridge", "Endpoints : POST /v1/config");
 
         await app.RunAsync(ct);
 

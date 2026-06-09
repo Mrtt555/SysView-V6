@@ -269,14 +269,27 @@ public sealed class SmtcService : IDisposable
                     try
                     {
                         using var ras = await thumb.OpenReadAsync();
-                        using var ms  = new System.IO.MemoryStream();
+                        // Respecter le content-type fourni par l'app (JPEG, PNG, …)
+                        string ct = ras.ContentType;
+                        if (string.IsNullOrEmpty(ct)) ct = "image/jpeg";
+
+                        using var ms = new System.IO.MemoryStream();
                         await ras.AsStreamForRead().CopyToAsync(ms);
-                        thumbUrl        = "data:image/jpeg;base64," +
-                                          Convert.ToBase64String(ms.ToArray());
-                        _lastThumbTitle = title;
-                        _lastThumbUrl   = thumbUrl;
                         swThumb.Stop();
-                        Logger.Debug("SMTC", $"  Miniature encodée en {swThumb.ElapsedMilliseconds} ms ({ms.Length / 1024} Ko)");
+
+                        if (ms.Length > 0)
+                        {
+                            thumbUrl        = $"data:{ct};base64," + Convert.ToBase64String(ms.ToArray());
+                            _lastThumbTitle = title;
+                            _lastThumbUrl   = thumbUrl;
+                            Logger.Debug("SMTC", $"  Miniature encodée : {ct}  {ms.Length / 1024} Ko  {swThumb.ElapsedMilliseconds} ms");
+                        }
+                        else
+                        {
+                            Logger.Warn("SMTC", $"  Miniature vide (0 octet) — app={s.SourceAppUserModelId}");
+                            _lastThumbTitle = title;
+                            _lastThumbUrl   = "";
+                        }
                     }
                     catch (Exception ex)
                     {
