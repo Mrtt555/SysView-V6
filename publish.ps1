@@ -65,6 +65,8 @@ dotnet publish $proj `
     -p:IncludeNativeLibrariesForSelfExtract=true `
     -p:DebugType=none `
     -p:AssemblyVersion=$Version `
+    -p:FileVersion=$Version `
+    -p:InformationalVersion=$Version `
     --nologo
 
 $sw.Stop()
