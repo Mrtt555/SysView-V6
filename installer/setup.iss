@@ -56,6 +56,10 @@ fr.InstPageDesc=Veuillez patienter...
 
 [Code]
 
+// Declaration explicite de SendMessage (non expose nativement en IS6 Pascal)
+function SendMessage(hWnd: HWND; Msg: UINT; wParam: WPARAM; lParam: LPARAM): LRESULT;
+  external 'SendMessageW@user32.dll stdcall';
+
 // =========================================================
 //  CONSTANTES ET VARIABLES GLOBALES
 // =========================================================
@@ -753,8 +757,6 @@ end;
 // =========================================================
 
 procedure InitializeWizard;
-var
-  Surface : TWinControl;
 begin
   // --- Page de selection du dossier ---
   PageDir := CreateInputDirPage(wpWelcome,
@@ -770,25 +772,23 @@ begin
     CustomMessage('InstPageTitle'),
     CustomMessage('InstPageDesc'));
 
-  Surface := PageInstall.Surface;
-
-  // Label de statut
+  // Label de statut (SurfaceWidth/Height = dimensions IS6 standard)
   InstStatus := TLabel.Create(WizardForm);
-  InstStatus.Parent := Surface;
-  InstStatus.Left   := 0;
-  InstStatus.Top    := 0;
-  InstStatus.Width  := Surface.ClientWidth;
-  InstStatus.Height := 20;
+  InstStatus.Parent  := PageInstall.Surface;
+  InstStatus.Left    := 0;
+  InstStatus.Top     := 0;
+  InstStatus.Width   := PageInstall.SurfaceWidth;
+  InstStatus.Height  := 20;
   InstStatus.Caption := 'Preparation...';
   InstStatus.Font.Style := [fsBold];
 
   // Memo de log
   InstMemo := TMemo.Create(WizardForm);
-  InstMemo.Parent     := Surface;
+  InstMemo.Parent     := PageInstall.Surface;
   InstMemo.Left       := 0;
   InstMemo.Top        := 28;
-  InstMemo.Width      := Surface.ClientWidth;
-  InstMemo.Height     := Surface.ClientHeight - 28;
+  InstMemo.Width      := PageInstall.SurfaceWidth;
+  InstMemo.Height     := PageInstall.SurfaceHeight - 28;
   InstMemo.ScrollBars := ssVertical;
   InstMemo.ReadOnly   := True;
   InstMemo.Font.Name  := 'Consolas';
