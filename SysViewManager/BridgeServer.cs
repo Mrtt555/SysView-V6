@@ -3,8 +3,12 @@
 // Remplace intégralement SysViewBridge.pyw (Python/FastAPI).
 // API identique : /v1/health  /v1/perf  /v1/weather
 //                 /v1/media   /v1/status  POST /v1/config
+//
+// Aether est désormais intégré directement dans WeatherService.
+// Plus de subprocess Python — tout tourne en in-process.
 // =============================================================
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -25,18 +29,16 @@ public sealed class BridgeServer
     private readonly WeatherService  _weather;
     private readonly MediaState      _media;
     private readonly RuntimeConfig   _cfg;
-    private readonly AetherProcess   _aether;
     private readonly double          _startTime;
 
     public BridgeServer(HardwareService hw, DiskService disk, WeatherService weather,
-                        MediaState media, RuntimeConfig cfg, AetherProcess aether)
+                        MediaState media, RuntimeConfig cfg)
     {
         _hw        = hw;
         _disk      = disk;
         _weather   = weather;
         _media     = media;
         _cfg       = cfg;
-        _aether    = aether;
         _startTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
     }
 
@@ -66,10 +68,10 @@ public sealed class BridgeServer
         builder.Services.AddRateLimiter(opt =>
         {
             opt.AddFixedWindowLimiter("api", o => {
-                o.PermitLimit       = 350;
-                o.Window            = TimeSpan.FromMinutes(1);
+                o.PermitLimit    = 350;
+                o.Window         = TimeSpan.FromMinutes(1);
                 o.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-                o.QueueLimit        = 0;
+                o.QueueLimit     = 0;
             });
             opt.AddFixedWindowLimiter("config", o => {
                 o.PermitLimit = 60;
@@ -138,10 +140,10 @@ public sealed class BridgeServer
 
             return Results.Json(new {
                 lhm_online = snap.LhmOnline,
-                cpu = new { name  = snap.CpuName,  usage = snap.CpuUsage, temp = snap.CpuTemp },
-                gpu = new { name  = snap.GpuName,  usage = snap.GpuUsage, temp = snap.GpuTemp },
-                ram = new { usage = snap.RamUsage, used_mb = snap.RamUsedMb, total_mb = snap.RamTotalMb },
-                vram= new { used_mb = snap.VramUsed, total_mb = snap.VramTotal },
+                cpu  = new { name  = snap.CpuName,  usage = snap.CpuUsage, temp = snap.CpuTemp },
+                gpu  = new { name  = snap.GpuName,  usage = snap.GpuUsage, temp = snap.GpuTemp },
+                ram  = new { usage = snap.RamUsage, used_mb = snap.RamUsedMb, total_mb = snap.RamTotalMb },
+                vram = new { used_mb = snap.VramUsed, total_mb = snap.VramTotal },
                 network = new { download_kb = Math.Round(dlKb, 1), upload_kb = Math.Round(ulKb, 1) },
                 disks = diskObj,
             });
@@ -149,11 +151,21 @@ public sealed class BridgeServer
 
         // ─────────────────────────────────────────────────────────────────────
         // GET /v1/weather
+        // Expose toutes les données météo (courant + prévisions + qualité d'air).
         // ─────────────────────────────────────────────────────────────────────
         app.MapGet("/v1/weather", (HttpContext _) =>
         {
             var w = _weather.GetData();
+
+            // Prévisions horaires : désérialiser le JSON brut stocké pour l'inclure
+            JsonElement? forecastEl = null;
+            if (w.ForecastJson is { Length: > 0 } fj)
+            {
+                try { forecastEl = JsonSerializer.Deserialize<JsonElement>(fj); } catch { }
+            }
+
             return Results.Json(new {
+                // ── Météo courante ──
                 om_temp          = w.Temp,
                 om_feels_like    = w.FeelsLike,
                 om_humidity      = w.Humidity,
@@ -161,15 +173,22 @@ public sealed class BridgeServer
                 om_precip        = w.Precip,
                 om_precip_prob   = w.PrecipProb,
                 om_wind          = w.Wind,
+                om_wind_gusts    = w.WindGusts,
                 om_wind_dir      = w.WindDir,
                 om_weather_code  = w.WeatherCode,
+                om_cloud_cover   = w.CloudCover,
+                // ── Qualité de l'air ──
                 om_aqi           = w.Aqi,
                 om_aqi_label     = w.AqiLabel,
                 om_pollen        = w.Pollen,
                 om_pollen_label  = w.PollenLabel,
                 om_pm10          = w.Pm10,
                 om_pm25          = w.Pm25,
+                // ── Modèle ──
                 aether_model     = w.AetherModel,
+                weather_model_id = w.WeatherModelId,
+                // ── Prévisions 48 h (horaire) ──
+                forecast         = (object?)forecastEl,
             });
         }).RequireRateLimiting("api");
 
@@ -191,14 +210,14 @@ public sealed class BridgeServer
                     : m.Position + elapsed;
             }
             return Results.Json(new {
-                title      = m.Title,
-                artist     = m.Artist,
-                source     = m.Source,
-                playing    = m.Playing,
-                position   = pos,
-                duration   = m.Duration,
-                thumb_url  = m.ThumbUrl,
-                last_update= m.LastUpdate,
+                title       = m.Title,
+                artist      = m.Artist,
+                source      = m.Source,
+                playing     = m.Playing,
+                position    = pos,
+                duration    = m.Duration,
+                thumb_url   = m.ThumbUrl,
+                last_update = m.LastUpdate,
             });
         }).RequireRateLimiting("api");
 
@@ -226,16 +245,16 @@ public sealed class BridgeServer
                 uptime = Uptime(now - _startTime),
                 port   = PORT,
                 modules = new {
-                    lhm    = snap.LhmOnline     ? "ok" : "offline",
-                    aether = w.Temp.HasValue    ? "ok" : "pending",
-                    model  = w.AetherModel ?? "—",
+                    lhm     = snap.LhmOnline   ? "ok" : "offline",
+                    weather = w.Temp.HasValue  ? "ok" : "pending",
+                    model   = w.WeatherModelId ?? _cfg.WeatherModel,
+                    model_name = w.AetherModel ?? "—",
                 },
                 endpoints = new {
-                    health    = "ok",
-                    perf      = "ok",
-                    weather   = w.Temp.HasValue ? "ok" : "pending",
-                    aether_ui = "http://127.0.0.1:8001",
-                    media     = mediaState,
+                    health  = "ok",
+                    perf    = "ok",
+                    weather = w.Temp.HasValue ? "ok" : "pending",
+                    media   = mediaState,
                 },
                 extension = new {
                     active      = extAge >= 0 && extAge < 10,
@@ -266,7 +285,7 @@ public sealed class BridgeServer
         }).RequireRateLimiting("api");
 
         // ─────────────────────────────────────────────────────────────────────
-        // POST /v1/config  (Wallpaper Engine)
+        // POST /v1/config  (Wallpaper Engine / extension Chrome)
         // ─────────────────────────────────────────────────────────────────────
         app.MapPost("/v1/config", async (HttpContext ctx) =>
         {
@@ -285,14 +304,17 @@ public sealed class BridgeServer
                         if (geo.HasValue)
                         {
                             _cfg.Update(lat: geo.Value.Lat, lon: geo.Value.Lon, city: geo.Value.City);
-                            await _weather.ConfigureAetherAsync(geo.Value.Lat, geo.Value.Lon, geo.Value.City);
                             _weather.TriggerRefresh();
                         }
                     });
                 }
 
                 if (d.TryGetProperty("weather_interval_min", out var wi))
-                { _cfg.Update(intervalMin: wi.GetInt32()); changed.Add("weather_interval_min"); _weather.TriggerRefresh(); }
+                {
+                    _cfg.Update(intervalMin: wi.GetInt32());
+                    changed.Add("weather_interval_min");
+                    _weather.TriggerRefresh();
+                }
 
                 if (d.TryGetProperty("network_iface", out var ni))
                 { _cfg.Update(netIface: ni.GetString()); changed.Add("network_iface"); }
@@ -300,10 +322,37 @@ public sealed class BridgeServer
                 if (d.TryGetProperty("lhm_enabled", out var le))
                 { _cfg.Update(lhmEnabled: le.GetBoolean()); changed.Add("lhm_enabled"); }
 
+                // ── Modèle météo (ex-Aether weather_model) ────────────────
+                if (d.TryGetProperty("weather_model", out var wm) && wm.GetString() is { } wmv)
+                {
+                    _cfg.Update(weatherModel: wmv);
+                    changed.Add("weather_model");
+                    _weather.TriggerRefresh();
+                }
+
                 return Results.Json(new { ok = true, updated = changed });
             }
             catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 400); }
         }).RequireRateLimiting("config");
+
+        // ─────────────────────────────────────────────────────────────────────
+        // GET /v1/models  — liste les modèles météo disponibles
+        // ─────────────────────────────────────────────────────────────────────
+        app.MapGet("/v1/models", (HttpContext _) =>
+        {
+            var current = _cfg.WeatherModel;
+            var resolved = WeatherService.ResolveModel(current, _cfg.Lat, _cfg.Lon);
+            var list = WeatherService.WEATHER_MODELS.Select(kv => new {
+                id          = kv.Key,
+                name        = kv.Value.Name,
+                name_en     = kv.Value.NameEn,
+                provider    = kv.Value.Provider,
+                region      = kv.Value.Region,
+                selected    = kv.Key == current,
+                active      = kv.Key == resolved,
+            });
+            return Results.Json(new { current, resolved, models = list });
+        }).RequireRateLimiting("api");
 
         await app.RunAsync(ct);
     }

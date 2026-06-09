@@ -1,9 +1,10 @@
 // =============================================================
 // HardwareService — LHM polling en mémoire (CPU/GPU/RAM/Net)
-// Équivalent de SysViewHardware/Program.cs, directement en-process.
+// Exporte aussi vers %AppData%\SysViewManager\Hardware.json (2 s).
 // =============================================================
 using LibreHardwareMonitor.Hardware;
 using System.Net.NetworkInformation;
+using System.Text.Json;
 
 namespace SysViewManager;
 
@@ -48,8 +49,13 @@ public sealed class HardwareService : IDisposable
     private readonly Thread  _thread;
     private volatile bool    _running = true;
 
-    public HardwareService()
+    // Export JSON
+    private readonly string _dataDir;
+    private static readonly JsonSerializerOptions _jsonOpts = new() { WriteIndented = true };
+
+    public HardwareService(string dataDir = "")
     {
+        _dataDir = dataDir;
         _hw = new Computer
         {
             IsCpuEnabled     = true,
@@ -63,7 +69,7 @@ public sealed class HardwareService : IDisposable
         Poll();
 
         _thread = new Thread(() => {
-            while (_running) { Thread.Sleep(1000); if (_running) Poll(); }
+            while (_running) { Thread.Sleep(500); if (_running) Poll(); }
         }) { IsBackground = true, Name = "hw-poll" };
         _thread.Start();
     }
@@ -93,6 +99,70 @@ public sealed class HardwareService : IDisposable
             ReadDisks(s);
 
             lock (_mu) _snap = s;
+
+            // Export Hardware.json toutes les 500 ms (= chaque poll)
+            WriteHardwareJson(s);
+        }
+        catch { }
+    }
+
+    // ─── Export Hardware.json ─────────────────────────────────────────────────
+
+    private void WriteHardwareJson(HardwareSnapshot s)
+    {
+        if (string.IsNullOrEmpty(_dataDir)) return;
+        try
+        {
+            var diskDict = s.Disks.ToDictionary(
+                d => d.Letter,
+                d => (object)new
+                {
+                    used_gb  = d.UsedGb,
+                    total_gb = d.TotalGb,
+                    free_gb  = d.FreeGb,
+                    percent  = d.Percent,
+                });
+
+            var obj = new
+            {
+                timestamp  = DateTime.UtcNow.ToString("o"),
+                lhm_online = s.LhmOnline,
+                cpu = new
+                {
+                    name  = s.CpuName,
+                    usage = s.CpuUsage.HasValue ? Math.Round(s.CpuUsage.Value, 1) : (double?)null,
+                    temp  = s.CpuTemp.HasValue  ? Math.Round(s.CpuTemp.Value,  1) : (double?)null,
+                },
+                gpu = new
+                {
+                    name         = s.GpuName,
+                    usage        = s.GpuUsage.HasValue ? Math.Round(s.GpuUsage.Value, 1) : (double?)null,
+                    temp         = s.GpuTemp.HasValue  ? Math.Round(s.GpuTemp.Value,  1) : (double?)null,
+                    vram_used_mb = s.VramUsed  != null ? (int?)Math.Round(s.VramUsed.Value)  : null,
+                    vram_total_mb= s.VramTotal != null ? (int?)Math.Round(s.VramTotal.Value) : null,
+                },
+                ram = new
+                {
+                    usage    = s.RamUsage.HasValue ? Math.Round(s.RamUsage.Value, 1) : (double?)null,
+                    used_mb  = s.RamUsedMb,
+                    total_mb = s.RamTotalMb,
+                },
+                network = new
+                {
+                    download_kb = Math.Round(s.NetDlKb + s.NetEthDlKb, 1),
+                    upload_kb   = Math.Round(s.NetUlKb + s.NetEthUlKb, 1),
+                    wifi_dl_kb  = Math.Round(s.NetDlKb,    1),
+                    wifi_ul_kb  = Math.Round(s.NetUlKb,    1),
+                    eth_dl_kb   = Math.Round(s.NetEthDlKb, 1),
+                    eth_ul_kb   = Math.Round(s.NetEthUlKb, 1),
+                },
+                disks = diskDict,
+            };
+
+            var json = JsonSerializer.Serialize(obj, _jsonOpts);
+            File.WriteAllText(
+                Path.Combine(_dataDir, "Hardware.json"),
+                json, System.Text.Encoding.UTF8);
         }
         catch { }
     }

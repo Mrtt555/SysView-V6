@@ -1,6 +1,7 @@
 // =============================================================
 // TrayApp — icône tray WinForms
-// Affiche le statut LHM / Bridge (in-process) / Aether (subprocess).
+// Statuts : Hardware (LHM) / Bridge / Météo (in-process)
+// Toggle démarrage automatique via tâche planifiée (admin).
 // =============================================================
 using System.Diagnostics;
 using System.Windows.Forms;
@@ -9,29 +10,26 @@ namespace SysViewManager;
 
 public sealed class TrayApp : ApplicationContext
 {
-    // ─── Services passés par référence ────────────────────────────────────────
-    private readonly HardwareService _hw;
-    private readonly WeatherService  _weather;
-    private readonly AetherProcess   _aether;
-    private readonly string          _logDir;
+    // ─── Services ────────────────────────────────────────────────────────────
+    private readonly HardwareService        _hw;
+    private readonly WeatherService         _weather;
+    private readonly string                 _dataDir;   // %AppData%\SysViewManager\
     private readonly SynchronizationContext _syncCtx;
 
     // ─── UI ───────────────────────────────────────────────────────────────────
-    private readonly NotifyIcon         _tray;
-    private readonly ContextMenuStrip   _menu;
-    private readonly ToolStripMenuItem  _miHw;
-    private readonly ToolStripMenuItem  _miBridge;
-    private readonly ToolStripMenuItem  _miAether;
-    private readonly ToolStripMenuItem  _miRestartAether;
+    private readonly NotifyIcon        _tray;
+    private readonly ContextMenuStrip  _menu;
+    private readonly ToolStripMenuItem _miHw;
+    private readonly ToolStripMenuItem _miBridge;
+    private readonly ToolStripMenuItem _miWeather;
+    private readonly ToolStripMenuItem _miAutoStart;
     private readonly System.Windows.Forms.Timer _timer;
 
-    public TrayApp(HardwareService hw, WeatherService weather,
-                   AetherProcess aether, string logDir)
+    public TrayApp(HardwareService hw, WeatherService weather, string dataDir)
     {
         _hw      = hw;
         _weather = weather;
-        _aether  = aether;
-        _logDir  = logDir;
+        _dataDir = dataDir;
         _syncCtx = SynchronizationContext.Current
                    ?? new System.Windows.Forms.WindowsFormsSynchronizationContext();
 
@@ -43,28 +41,43 @@ public sealed class TrayApp : ApplicationContext
         _menu.Items.Add(miTitle);
         _menu.Items.Add(new ToolStripSeparator());
 
+        // Statuts (non-cliquables)
         _miHw = new ToolStripMenuItem("○ Hardware  [init...]") { Enabled = false };
         _menu.Items.Add(_miHw);
 
         _miBridge = new ToolStripMenuItem("● Bridge  [Port 5001]") { Enabled = false };
         _menu.Items.Add(_miBridge);
 
-        _miAether = new ToolStripMenuItem("○ Aether  [Démarrer]");
-        _miAether.Click += (_, _) => ToggleAether();
-        _menu.Items.Add(_miAether);
+        _miWeather = new ToolStripMenuItem("○ Météo  [en attente…]") { Enabled = false };
+        _menu.Items.Add(_miWeather);
 
         _menu.Items.Add(new ToolStripSeparator());
 
-        _miRestartAether = new ToolStripMenuItem("↺  Redémarrer Aether");
-        _miRestartAether.Click += (_, _) => Task.Run(_aether.Restart)
-            .ContinueWith(_ => _syncCtx.Post(__ => RefreshStatus(), null));
-        _menu.Items.Add(_miRestartAether);
+        // Actualiser la météo
+        var miRefreshWeather = new ToolStripMenuItem("↺  Actualiser la météo");
+        miRefreshWeather.Click += (_, _) => {
+            _weather.TriggerRefresh();
+            miRefreshWeather.Enabled = false;
+            Task.Delay(5000).ContinueWith(_ => _syncCtx.Post(__ => {
+                miRefreshWeather.Enabled = true;
+                RefreshStatus();
+            }, null));
+        };
+        _menu.Items.Add(miRefreshWeather);
+
+        // Démarrage automatique (toggle)
+        _miAutoStart = new ToolStripMenuItem("⚡  Démarrage auto  [vérif…]");
+        _miAutoStart.Click += (_, _) => ToggleAutoStart();
+        _menu.Items.Add(_miAutoStart);
 
         _menu.Items.Add(new ToolStripSeparator());
 
-        var miLogs = new ToolStripMenuItem("📁  Ouvrir les logs");
-        miLogs.Click += (_, _) => OpenLogs();
-        _menu.Items.Add(miLogs);
+        var miDataDir = new ToolStripMenuItem("📁  Dossier données (%AppData%)");
+        miDataDir.Click += (_, _) => {
+            if (Directory.Exists(_dataDir))
+                Process.Start(new ProcessStartInfo { FileName = _dataDir, UseShellExecute = true });
+        };
+        _menu.Items.Add(miDataDir);
 
         var miDocs = new ToolStripMenuItem("🌐  Bridge API /docs");
         miDocs.Click += (_, _) => Process.Start(new ProcessStartInfo
@@ -76,6 +89,9 @@ public sealed class TrayApp : ApplicationContext
         var miQuit = new ToolStripMenuItem("✕  Quitter");
         miQuit.Click += (_, _) => Quit();
         _menu.Items.Add(miQuit);
+
+        // Rafraîchir le statut auto-start au moment où le menu s'ouvre
+        _menu.Opening += (_, _) => RefreshAutoStartLabel();
 
         // ── Icône tray ────────────────────────────────────────────────────────
         _tray = new NotifyIcon
@@ -99,9 +115,9 @@ public sealed class TrayApp : ApplicationContext
 
     private void RefreshStatus()
     {
-        var snap      = _hw.GetSnapshot();
-        var weather   = _weather.GetData();
-        bool aetherOk = _aether.IsRunning;
+        var snap       = _hw.GetSnapshot();
+        var weather    = _weather.GetData();
+        bool weatherOk = weather.Temp.HasValue;
 
         // ── Labels ──
         _miHw.Text = snap.LhmOnline
@@ -111,57 +127,72 @@ public sealed class TrayApp : ApplicationContext
 
         _miBridge.Text = "● Bridge  [Port 5001]";
 
-        _miAether.Text = aetherOk
-            ? $"● Aether{(weather.Temp.HasValue ? "  " + weather.Temp.Value.ToString("F1") + "°C" : "")}  [Arrêter]"
-            : "○ Aether  [Démarrer]";
-
-        _miRestartAether.Enabled = aetherOk;
+        _miWeather.Text = weatherOk
+            ? $"● Météo  [{weather.Temp!.Value:F1}°C  {weather.Wind?.ToString("F0") ?? "—"} km/h" +
+              $"  {weather.AetherModel ?? "—"}]"
+            : "○ Météo  [en attente…]";
 
         // ── Couleur icône ──
-        Color c = (snap.LhmOnline && aetherOk)  ? Color.FromArgb(0, 200, 100)   // tout vert
-                : (snap.LhmOnline || aetherOk)  ? Color.Orange                  // partiel
-                :                                  Color.FromArgb(200, 50, 50);  // rouge
+        Color c = (snap.LhmOnline && weatherOk) ? Color.FromArgb(0, 200, 100)
+                : (snap.LhmOnline || weatherOk) ? Color.Orange
+                :                                  Color.FromArgb(200, 50, 50);
 
         var old = _tray.Icon;
         _tray.Icon = MakeTrayIcon(c);
         old?.Dispose();
 
-        string cpuStr = snap.CpuUsage.HasValue ? $"{snap.CpuUsage.Value:F0}%" : "—";
-        string ramStr = snap.RamUsage.HasValue ? $"{snap.RamUsage.Value:F0}%" : "—";
-        _tray.Text = $"SysView V6 — CPU:{cpuStr}  RAM:{ramStr}  Aether:{(aetherOk ? "✓" : "✗")}";
+        string cpuStr   = snap.CpuUsage.HasValue ? $"{snap.CpuUsage.Value:F0}%" : "—";
+        string ramStr   = snap.RamUsage.HasValue  ? $"{snap.RamUsage.Value:F0}%" : "—";
+        string meteoStr = weatherOk ? $"{weather.Temp!.Value:F1}°C" : "⏳";
+        _tray.Text = $"SysView V6 — CPU:{cpuStr}  RAM:{ramStr}  Météo:{meteoStr}";
     }
 
-    // ─── Actions ──────────────────────────────────────────────────────────────
-
-    private void ToggleAether()
+    private void RefreshAutoStartLabel()
     {
-        if (_aether.IsRunning) Task.Run(_aether.Stop);
-        else                   Task.Run(_aether.Start);
-        Task.Delay(2000).ContinueWith(_ => _syncCtx.Post(__ => RefreshStatus(), null));
+        bool on = Program.IsAutoStartRegistered();
+        _miAutoStart.Text = on
+            ? "⚡  Démarrage auto  [✓ Actif]"
+            : "⚡  Démarrage auto  [✗ Désactivé]";
     }
+
+    // ─── Toggle démarrage automatique ────────────────────────────────────────
+
+    private void ToggleAutoStart()
+    {
+        bool current = Program.IsAutoStartRegistered();
+        if (current)
+            Program.UnregisterAutoStart();
+        else
+            Program.RegisterAutoStart();
+
+        // Rafraîchir le label après la commande
+        Task.Delay(1500).ContinueWith(_ =>
+            _syncCtx.Post(__ => RefreshAutoStartLabel(), null));
+    }
+
+    // ─── Popup double-clic ────────────────────────────────────────────────────
 
     private void ShowStatusPopup()
     {
         var snap = _hw.GetSnapshot();
         var w    = _weather.GetData();
+        bool autoOn = Program.IsAutoStartRegistered();
         MessageBox.Show(
-            $"Hardware (LHM) : {(snap.LhmOnline ? "✓ OK" : "✗ Dégradé (lancer en admin ?)")}\n" +
+            $"Hardware (LHM) : {(snap.LhmOnline ? "✓ OK" : "✗ Dégradé (admin requis ?)")}\n" +
             $"Bridge         : ✓ Port 5001\n" +
-            $"Aether         : {(_aether.IsRunning ? "✓ Port 8001" : "✗ Arrêté")}\n\n" +
+            $"Météo          : {(w.Temp.HasValue ? $"✓ {w.Temp.Value:F1}°C" : "⏳ En attente…")}\n" +
+            $"Modèle météo   : {w.AetherModel ?? "—"}\n" +
+            $"Démarrage auto : {(autoOn ? "✓ Actif (tâche planifiée)" : "✗ Désactivé")}\n\n" +
             $"CPU   : {snap.CpuUsage?.ToString("F1") ?? "—"}%  " +
                     $"{(snap.CpuTemp.HasValue ? snap.CpuTemp.Value.ToString("F1") + "°C" : "—")}\n" +
             $"GPU   : {snap.GpuUsage?.ToString("F1") ?? "—"}%  " +
                     $"{(snap.GpuTemp.HasValue ? snap.GpuTemp.Value.ToString("F1") + "°C" : "—")}\n" +
             $"RAM   : {snap.RamUsage?.ToString("F1") ?? "—"}%  " +
                     $"({snap.RamUsedMb} Mo / {snap.RamTotalMb} Mo)\n" +
-            $"Météo : {(w.Temp.HasValue ? w.Temp.Value.ToString("F1") + "°C" : "—")}",
+            $"Vent  : {w.Wind?.ToString("F0") ?? "—"} km/h  Rafales : {w.WindGusts?.ToString("F0") ?? "—"} km/h\n" +
+            $"IQA   : {w.Aqi?.ToString() ?? "—"}  ({w.AqiLabel})  Pollen : {w.Pollen?.ToString() ?? "—"} ({w.PollenLabel})\n\n" +
+            $"Données : {_dataDir}",
             "SysView V6 — Statut", MessageBoxButtons.OK, MessageBoxIcon.Information);
-    }
-
-    private void OpenLogs()
-    {
-        if (Directory.Exists(_logDir))
-            Process.Start(new ProcessStartInfo { FileName = _logDir, UseShellExecute = true });
     }
 
     private void Quit()

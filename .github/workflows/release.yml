@@ -1,0 +1,116 @@
+# =========================================================
+# SysView V6 — Build & Release automatique
+#
+# Déclenché sur :
+#   - push d'un tag vX.Y.Z     → release publique
+#   - workflow_dispatch manuel → release draft
+#
+# Produit : SysViewManager.exe (win-x64, single-file, self-contained)
+# =========================================================
+
+name: Release SysViewManager
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version du release (ex: v1.0.1)'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  build-and-release:
+    name: Build & Publish
+    runs-on: windows-latest
+    permissions:
+      contents: write   # requis pour créer le release GitHub
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Setup .NET 8 ─────────────────────────────────────────────────────────
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # ── Version ──────────────────────────────────────────────────────────────
+      - name: Set version variable
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          fi
+
+      # ── Publish SysViewManager (win-x64, single-file) ──────────────────────
+      - name: Publish SysViewManager
+        shell: pwsh
+        run: |
+          dotnet publish SysViewManager/SysViewManager.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=none `
+            -p:AssemblyVersion=${{ steps.version.outputs.tag }} `
+            --nologo
+
+      # ── Vérification ─────────────────────────────────────────────────────────
+      - name: Verify output
+        shell: pwsh
+        run: |
+          $exe = "SysViewManager/bin/Release/net8.0-windows/win-x64/publish/SysViewManager.exe"
+          if (!(Test-Path $exe)) { Write-Error "SysViewManager.exe introuvable!"; exit 1 }
+          $size = (Get-Item $exe).Length / 1MB
+          Write-Host "SysViewManager.exe — $([math]::Round($size, 1)) MB"
+
+      # ── Créer le GitHub Release ───────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name:   ${{ steps.version.outputs.tag }}
+          name:       "SysView V6 ${{ steps.version.outputs.tag }}"
+          draft:      ${{ github.event_name == 'workflow_dispatch' }}
+          prerelease: false
+          body: |
+            ## SysView V6 ${{ steps.version.outputs.tag }}
+
+            Application tray unique — aucune dépendance Python requise.
+
+            ### Installation rapide
+            1. Téléchargez **`SysViewManager.exe`** ci-dessous
+            2. Lancez-le **en tant qu'administrateur** (requis pour les capteurs de température LHM)
+            3. L'icône apparaît dans la barre système — entrez votre ville dans Wallpaper Engine
+
+            > Le code source est disponible dans ce dépôt mais **il n'est pas nécessaire de le télécharger**.
+            > L'installeur `SysViewV6_Setup.exe` télécharge automatiquement cet exe lors de l'installation.
+
+            ### Données générées automatiquement
+            | Fichier | Contenu |
+            |---|---|
+            | `%AppData%\SysViewManager\Hardware.json` | CPU, GPU, RAM, réseau, disques (maj. 2 s) |
+            | `%AppData%\SysViewManager\Weather.json` | Météo, qualité de l'air, prévisions 48 h |
+            | `%AppData%\SysViewManager\runtime_config.json` | Configuration persistée |
+
+            ### API locale
+            ```
+            GET  http://127.0.0.1:5001/v1/health
+            GET  http://127.0.0.1:5001/v1/perf
+            GET  http://127.0.0.1:5001/v1/weather
+            GET  http://127.0.0.1:5001/v1/media
+            GET  http://127.0.0.1:5001/v1/models
+            GET  http://127.0.0.1:5001/v1/status
+            POST http://127.0.0.1:5001/v1/config
+            POST http://127.0.0.1:5001/v1/media
+            ```
+          files: |
+            SysViewManager/bin/Release/net8.0-windows/win-x64/publish/SysViewManager.exe

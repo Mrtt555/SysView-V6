@@ -13,7 +13,7 @@
     <RootNamespace>SysViewManager</RootNamespace>
     <!-- Droits admin requis pour LHM températures (PawnIO driver) -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>..\API\SysViewHardware\app.ico</ApplicationIcon>
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <!-- Release : single-file self-contained win-x64 -->
     <PublishSingleFile Condition="'$(Configuration)'=='Release'">true</PublishSingleFile>
     <SelfContained Condition="'$(Configuration)'=='Release'">true</SelfContained>

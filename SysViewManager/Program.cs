@@ -1,9 +1,8 @@
 // =============================================================
 // SysView V6 — Point d'entrée
-// Lance tous les services en parallèle, puis démarre le tray WinForms.
+// Données utilisateur → %AppData%\SysViewManager\
+//   runtime_config.json, Hardware.json, Weather.json, logs/
 // =============================================================
-using System.Diagnostics;
-using System.Threading;
 using System.Windows.Forms;
 
 [assembly: System.Runtime.Versioning.SupportedOSPlatform("windows")]
@@ -12,11 +11,20 @@ namespace SysViewManager;
 
 static class Program
 {
+    /// <summary>Dossier de données utilisateur commun à tous les services.</summary>
+    public static readonly string AppDataDir =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                     "SysViewManager");
+
     [STAThread]
     static void Main()
     {
         ApplicationConfiguration.Initialize();
         Application.SetHighDpiMode(HighDpiMode.SystemAware);
+
+        // ── Dossier de données ────────────────────────────────────────────────
+        Directory.CreateDirectory(AppDataDir);
+        Directory.CreateDirectory(Path.Combine(AppDataDir, "logs"));
 
         // ── Instance unique ───────────────────────────────────────────────────
         using var mutex = new Mutex(true, "Global\\SysViewManagerMutex", out bool isNew);
@@ -28,104 +36,120 @@ static class Program
             return;
         }
 
-        // ── Chemins ───────────────────────────────────────────────────────────
-        var baseDir   = AppContext.BaseDirectory;
-        var apiDir    = Path.Combine(baseDir, "API");
-        var aetherDir = Path.Combine(baseDir, "Aether");
-        var logDir    = Path.Combine(baseDir, "logs");
-        Directory.CreateDirectory(logDir);
+        // ── Démarrage automatique (tâche planifiée admin) ─────────────────────
+        EnsureAutoStart();
 
         // ── Services ──────────────────────────────────────────────────────────
-        var pythonW      = FindPythonW(apiDir);
-        using var hwSvc  = new HardwareService();
-        var diskSvc      = new DiskService();
-        var rtCfg        = new RuntimeConfig(apiDir);
-        using var aether = new AetherProcess(aetherDir, pythonW);
-        using var weather= new WeatherService(rtCfg);
-        var media        = new MediaState();
-
-        // ── Démarrage Aether ─────────────────────────────────────────────────
-        aether.Start();
+        using var hwSvc   = new HardwareService(AppDataDir);
+        var diskSvc       = new DiskService();
+        var rtCfg         = new RuntimeConfig(AppDataDir);
+        using var weather = new WeatherService(rtCfg, AppDataDir);
+        var media         = new MediaState();
 
         // ── Bridge HTTP (ASP.NET Core) sur thread background ─────────────────
         var cts    = new CancellationTokenSource();
-        var bridge = new BridgeServer(hwSvc, diskSvc, weather, media, rtCfg, aether);
+        var bridge = new BridgeServer(hwSvc, diskSvc, weather, media, rtCfg);
         var srv    = Task.Run(() => bridge.RunAsync(cts.Token));
 
         // ── Tray sur le thread STA principal ─────────────────────────────────
-        using var tray = new TrayApp(hwSvc, weather, aether, logDir);
-        Application.Run(tray);   // bloque jusqu'à "Quitter"
+        using var tray = new TrayApp(hwSvc, weather, AppDataDir);
+        Application.Run(tray);
 
         // ── Nettoyage à la fermeture ──────────────────────────────────────────
         cts.Cancel();
-        aether.Stop();
         try { srv.Wait(TimeSpan.FromSeconds(3)); } catch { }
     }
 
-    // ─── Recherche de pythonw.exe ─────────────────────────────────────────────
+    // ─── Tâche planifiée — création silencieuse au 1er lancement ─────────────
 
-    private static string FindPythonW(string apiDir)
-    {
-        // 1. Chemin enregistré dans runtime_config.json (par setup)
-        var cfg = Path.Combine(apiDir, "runtime_config.json");
-        if (File.Exists(cfg))
-        {
-            try
-            {
-                var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(cfg));
-                if (json.RootElement.TryGetProperty("pythonw", out var pwe))
-                {
-                    var p = pwe.GetString();
-                    if (p != null && File.Exists(p)) return p;
-                }
-            }
-            catch { }
-        }
-
-        // 2. PATH
-        foreach (var name in new[] { "pythonw", "python" })
-        {
-            var found = WhereExe(name);
-            if (found != null)
-            {
-                var pw = Path.Combine(Path.GetDirectoryName(found)!, "pythonw.exe");
-                return File.Exists(pw) ? pw : found;
-            }
-        }
-
-        // 3. %LOCALAPPDATA%\Programs\Python\PythonXX\
-        var localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var pyRoot   = Path.Combine(localApp, "Programs", "Python");
-        if (Directory.Exists(pyRoot))
-        {
-            foreach (var d in Directory.GetDirectories(pyRoot).OrderByDescending(x => x))
-            {
-                var pw = Path.Combine(d, "pythonw.exe");
-                if (File.Exists(pw)) return pw;
-            }
-        }
-
-        return "";
-    }
-
-    private static string? WhereExe(string name)
+    public static void EnsureAutoStart()
     {
         try
         {
-            using var p = new Process
+            // Vérifier si la tâche existe déjà
+            using var check = new System.Diagnostics.Process
             {
-                StartInfo = new ProcessStartInfo("cmd", $"/c where {name}")
+                StartInfo = new System.Diagnostics.ProcessStartInfo("schtasks.exe",
+                    "/query /tn \"SysViewManager\"")
                 {
                     RedirectStandardOutput = true,
+                    RedirectStandardError  = true,
+                    UseShellExecute  = false,
+                    CreateNoWindow   = true,
+                }
+            };
+            check.Start();
+            check.WaitForExit(5000);
+            if (check.ExitCode == 0) return;  // déjà enregistrée
+
+            RegisterAutoStart();
+        }
+        catch { }
+    }
+
+    public static void RegisterAutoStart()
+    {
+        try
+        {
+            var exe = Environment.ProcessPath
+                      ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
+                      ?? "";
+            if (string.IsNullOrEmpty(exe)) return;
+
+            using var p = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo("schtasks.exe",
+                    $"/create /tn \"SysViewManager\" /tr \"\\\"{exe}\\\"\"" +
+                    " /sc ONLOGON /rl HIGHEST /f")
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow  = true,
+                }
+            };
+            p.Start();
+            p.WaitForExit(10_000);
+        }
+        catch { }
+    }
+
+    public static void UnregisterAutoStart()
+    {
+        try
+        {
+            using var p = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo("schtasks.exe",
+                    "/delete /tn \"SysViewManager\" /f")
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow  = true,
+                }
+            };
+            p.Start();
+            p.WaitForExit(5_000);
+        }
+        catch { }
+    }
+
+    public static bool IsAutoStartRegistered()
+    {
+        try
+        {
+            using var p = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo("schtasks.exe",
+                    "/query /tn \"SysViewManager\"")
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError  = true,
                     UseShellExecute  = false,
                     CreateNoWindow   = true,
                 }
             };
             p.Start();
-            var first = p.StandardOutput.ReadLine()?.Trim();
-            p.WaitForExit(3000);
-            return first != null && File.Exists(first) ? first : null;
+            p.WaitForExit(3_000);
+            return p.ExitCode == 0;
         }
-        catch { return null; }
+        catch { return false; }
     }
 }
