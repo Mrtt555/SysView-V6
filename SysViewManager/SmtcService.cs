@@ -8,12 +8,16 @@
 //   ▸ Purement événementiel (SessionsChanged, MediaPropertiesChanged,
 //     PlaybackInfoChanged, TimelinePropertiesChanged) → zéro CPU quand
 //     aucun média ne change.
-//   ▸ La miniature base64 est ré-encodée UNIQUEMENT si le titre change
-//     (évite le goulot d'étranglement identifié avec le bridge Python).
+//   ▸ Sélection intelligente de session : préfère la session Playing
+//     sur la session courante (GetCurrentSession). Si la session liée
+//     passe en pause et qu'une autre session joue, bascule dessus.
+//   ▸ La miniature base64 est ré-encodée UNIQUEMENT si le titre change.
 //   ▸ Priorité : extension Chrome (POST /v1/media, active < 5 s) > SMTC
 //     → si l'extension est active, les updates SMTC sont ignorées.
-//   ▸ Silencieux si SMTC indisponible (processus élevé < Windows 1903,
-//     ou build sans API) — l'extension Chrome prend alors le relais.
+//   ▸ Silencieux si SMTC indisponible.
+//
+// Note VLC : VLC doit avoir "Utiliser les touches multimédia Windows"
+//   activé (Préférences → Interface) pour s'enregistrer avec SMTC.
 //
 // Requis : TargetFramework net8.0-windows10.0.17763.0 dans le csproj.
 // =============================================================
@@ -37,12 +41,11 @@ public sealed class SmtcService : IDisposable
     private string _lastThumbTitle = "";
     private string _lastThumbUrl   = "";
 
-    // État précédent pour détecter les changements (logs)
+    // État précédent pour logs différentiels
     private string _lastLoggedTitle  = "";
     private string _lastLoggedAppId  = "";
 
     // Sémaphore 1-1 : empêche les FetchAsync concurrents
-    // (plusieurs events peuvent arriver simultanément lors d'un changement de piste)
     private readonly SemaphoreSlim _sem = new(1, 1);
 
     public SmtcService(MediaState media)
@@ -53,9 +56,6 @@ public sealed class SmtcService : IDisposable
 
     // ─── Démarrage ───────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Lance le service SMTC. N'échoue jamais — silencieux si l'API est indisponible.
-    /// </summary>
     public async Task StartAsync(CancellationToken ct = default)
     {
         Logger.Info("SMTC", "Demande d'accès au gestionnaire SMTC...");
@@ -66,9 +66,13 @@ public sealed class SmtcService : IDisposable
                          .AsTask(ct);
 
             _mgr.SessionsChanged += OnSessionsChanged;
-            var current = _mgr.GetCurrentSession();
-            Logger.Info("SMTC", $"Gestionnaire SMTC obtenu — session courante : {(current != null ? current.SourceAppUserModelId : "aucune")}");
-            BindSession(current);
+
+            var sessions = _mgr.GetSessions();
+            Logger.Info("SMTC", $"Gestionnaire SMTC obtenu — {sessions.Count} session(s) active(s)");
+            foreach (var s in sessions)
+                Logger.Info("SMTC", $"  · {s.SourceAppUserModelId}  état={StatusLabel(s)}");
+
+            BindSession(PickBestSession(sessions));
             Logger.Info("SMTC", "Détection native des médias active (événementiel)");
         }
         catch (OperationCanceledException)
@@ -77,11 +81,45 @@ public sealed class SmtcService : IDisposable
         }
         catch (Exception ex)
         {
-            // SMTC non disponible sur ce build Windows ou contexte élevé non supporté.
-            // L'extension Chrome reste la source médias — aucun impact fonctionnel.
-            Logger.Warn("SMTC", $"API SMTC indisponible — fallback extension Chrome");
+            Logger.Warn("SMTC", "API SMTC indisponible — fallback extension Chrome");
             Logger.Warn("SMTC", $"  Cause : {ex.GetType().Name}: {ex.Message}");
         }
+    }
+
+    // ─── Sélection de la meilleure session ───────────────────────────────────
+
+    /// <summary>
+    /// Parmi toutes les sessions SMTC enregistrées, retourne celle qui joue.
+    /// Fallback : session en pause. Fallback : GetCurrentSession().
+    /// </summary>
+    private GlobalSystemMediaTransportControlsSession? PickBestSession(
+        IReadOnlyList<GlobalSystemMediaTransportControlsSession> sessions)
+    {
+        if (sessions.Count == 0) return null;
+
+        GlobalSystemMediaTransportControlsSession? bestPlaying = null;
+        GlobalSystemMediaTransportControlsSession? bestPaused  = null;
+
+        foreach (var s in sessions)
+        {
+            try
+            {
+                var status = s.GetPlaybackInfo()?.PlaybackStatus;
+                if (status == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                    bestPlaying ??= s;
+                else
+                    bestPaused  ??= s;
+            }
+            catch { }
+        }
+
+        var best = bestPlaying ?? bestPaused;
+        if (sessions.Count > 1)
+        {
+            Logger.Debug("SMTC", $"PickBestSession : {sessions.Count} sessions — choix={best?.SourceAppUserModelId ?? "aucune"}"
+                + (bestPlaying != null ? $" [playing]" : " [paused-only]"));
+        }
+        return best;
     }
 
     // ─── Gestion des sessions ────────────────────────────────────────────────
@@ -90,9 +128,12 @@ public sealed class SmtcService : IDisposable
         GlobalSystemMediaTransportControlsSessionManager mgr,
         SessionsChangedEventArgs _)
     {
-        var s = mgr.GetCurrentSession();
-        Logger.Info("SMTC", $"SessionsChanged — nouvelle session : {(s != null ? s.SourceAppUserModelId : "aucune")}");
-        BindSession(s);
+        var sessions = mgr.GetSessions();
+        Logger.Info("SMTC", $"SessionsChanged — {sessions.Count} session(s) :");
+        foreach (var s in sessions)
+            Logger.Info("SMTC", $"  · {s.SourceAppUserModelId}  état={StatusLabel(s)}");
+
+        BindSession(PickBestSession(sessions));
     }
 
     private void BindSession(GlobalSystemMediaTransportControlsSession? s)
@@ -118,9 +159,9 @@ public sealed class SmtcService : IDisposable
         s.MediaPropertiesChanged    += OnMediaChanged;
         s.PlaybackInfoChanged       += OnPlaybackChanged;
         s.TimelinePropertiesChanged += OnTimelineChanged;
-        Logger.Info("SMTC", $"Session attachée : {s.SourceAppUserModelId}");
+        Logger.Info("SMTC", $"Session attachée : {s.SourceAppUserModelId}  [{StatusLabel(s)}]");
 
-        // Lecture initiale de la session fraîchement attachée
+        // Lecture initiale
         _ = Task.Run(FetchAsync);
     }
 
@@ -129,21 +170,49 @@ public sealed class SmtcService : IDisposable
     private void OnMediaChanged(GlobalSystemMediaTransportControlsSession s,
                                  MediaPropertiesChangedEventArgs e)
     {
-        Logger.Debug("SMTC", $"MediaPropertiesChanged — app={s.SourceAppUserModelId}");
+        Logger.Debug("SMTC", $"MediaPropertiesChanged — {s.SourceAppUserModelId}");
         _ = Task.Run(FetchAsync);
     }
 
     private void OnPlaybackChanged(GlobalSystemMediaTransportControlsSession s,
                                     PlaybackInfoChangedEventArgs e)
     {
-        Logger.Debug("SMTC", $"PlaybackInfoChanged — app={s.SourceAppUserModelId}");
+        Logger.Debug("SMTC", $"PlaybackInfoChanged — {s.SourceAppUserModelId}  état={StatusLabel(s)}");
+
+        // Si la session courante vient de passer en pause, chercher une session
+        // qui joue parmi toutes les sessions disponibles.
+        if (_mgr != null)
+        {
+            try
+            {
+                var status = s.GetPlaybackInfo()?.PlaybackStatus;
+                bool isPaused = status != GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+
+                if (isPaused)
+                {
+                    var all = _mgr.GetSessions();
+                    if (all.Count > 1)
+                    {
+                        var best = PickBestSession(all);
+                        if (best != null && best.SourceAppUserModelId != s.SourceAppUserModelId)
+                        {
+                            Logger.Info("SMTC", $"Session courante en pause → switch vers {best.SourceAppUserModelId} [{StatusLabel(best)}]");
+                            BindSession(best);
+                            return;
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
         _ = Task.Run(FetchAsync);
     }
 
     private void OnTimelineChanged(GlobalSystemMediaTransportControlsSession s,
                                     TimelinePropertiesChangedEventArgs e)
     {
-        Logger.Debug("SMTC", $"TimelinePropertiesChanged — app={s.SourceAppUserModelId}");
+        Logger.Debug("SMTC", $"TimelinePropertiesChanged — {s.SourceAppUserModelId}");
         _ = Task.Run(FetchAsync);
     }
 
@@ -151,8 +220,6 @@ public sealed class SmtcService : IDisposable
 
     private async Task FetchAsync()
     {
-        // Si un FetchAsync est déjà en cours, on abandonne ce déclenchement
-        // (il lira l'état le plus récent de toute façon)
         if (!await _sem.WaitAsync(0))
         {
             Logger.Debug("SMTC", "FetchAsync ignoré (déjà en cours)");
@@ -186,15 +253,14 @@ public sealed class SmtcService : IDisposable
             double duration = timeline?.EndTime.TotalSeconds  ?? 0;
 
             // ── Miniature ─────────────────────────────────────────────────────
-            // Ré-encodage base64 uniquement lors d'un changement de titre.
-            string thumbUrl = "";
+            string thumbUrl       = "";
             bool   thumbFromCache = false;
 
             if (!string.IsNullOrEmpty(title))
             {
                 if (title == _lastThumbTitle)
                 {
-                    thumbUrl      = _lastThumbUrl;   // cache chaud — zéro travail
+                    thumbUrl       = _lastThumbUrl;
                     thumbFromCache = true;
                 }
                 else if (props?.Thumbnail is { } thumb)
@@ -222,8 +288,8 @@ public sealed class SmtcService : IDisposable
                 }
                 else
                 {
-                    // Nouveau titre sans miniature SMTC
-                    Logger.Debug("SMTC", $"  Pas de miniature pour \"{title}\"");
+                    // Navigateur/YouTube : pas de miniature via SMTC (limitation API web)
+                    Logger.Debug("SMTC", $"  Pas de miniature pour \"{title}\" (source={s.SourceAppUserModelId})");
                     _lastThumbTitle = title;
                     _lastThumbUrl   = "";
                 }
@@ -234,16 +300,17 @@ public sealed class SmtcService : IDisposable
                 _lastThumbUrl   = "";
             }
 
-            // ── Log si le titre a changé ──────────────────────────────────────
+            // ── Log différentiel ──────────────────────────────────────────────
             if (title != _lastLoggedTitle || s.SourceAppUserModelId != _lastLoggedAppId)
             {
                 _lastLoggedTitle = title;
                 _lastLoggedAppId = s.SourceAppUserModelId;
                 if (!string.IsNullOrEmpty(title))
-                    Logger.Info("SMTC", $"Média détecté : {(playing ? "▶" : "⏸")} \"{title}\" — {artist}"
+                    Logger.Info("SMTC", $"Média : {(playing ? "▶" : "⏸")} \"{title}\" — {artist}"
                         + (thumbFromCache ? " [miniature: cache]"
                           : !string.IsNullOrEmpty(thumbUrl) ? " [miniature: encodée]"
-                          : " [sans miniature]"));
+                          : " [sans miniature]")
+                        + $"  (source={s.SourceAppUserModelId})");
                 else
                     Logger.Debug("SMTC", $"Titre vide — app={s.SourceAppUserModelId}");
             }
@@ -256,12 +323,30 @@ public sealed class SmtcService : IDisposable
         }
     }
 
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    private static string StatusLabel(GlobalSystemMediaTransportControlsSession s)
+    {
+        try
+        {
+            return s.GetPlaybackInfo()?.PlaybackStatus switch
+            {
+                GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing  => "playing",
+                GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused   => "paused",
+                GlobalSystemMediaTransportControlsSessionPlaybackStatus.Stopped  => "stopped",
+                GlobalSystemMediaTransportControlsSessionPlaybackStatus.Changing => "changing",
+                _ => "unknown"
+            };
+        }
+        catch { return "error"; }
+    }
+
     // ─── IDisposable ─────────────────────────────────────────────────────────
 
     public void Dispose()
     {
         Logger.Info("SMTC", "Fermeture du service SMTC");
-        BindSession(null);   // désabonne les events
+        BindSession(null);
         _sem.Dispose();
     }
 }
