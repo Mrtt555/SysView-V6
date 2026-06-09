@@ -105,7 +105,7 @@ begin
   if Assigned(InstMemo) then begin
     InstMemo.Lines.Add('[' + GetDateTimeString('hh:nn:ss', #0, #0) + '] ' + S);
     SendMessage(InstMemo.Handle, $00B7 {EM_SCROLLCARET}, 0, 0);
-    Application.ProcessMessages;
+    WizardForm.Refresh;
   end;
   if LogFilePath <> '' then
     SaveStringToFile(LogFilePath, '[' + GetDateTimeString('hh:nn:ss', #0, #0) + '] ' + S + #13#10, True);
@@ -115,7 +115,7 @@ procedure SetStatus(const S: String);
 begin
   if Assigned(InstStatus) then begin
     InstStatus.Caption := S;
-    Application.ProcessMessages;
+    WizardForm.Refresh;
   end;
   AppendLog(S);
 end;
