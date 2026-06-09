@@ -1,0 +1,51 @@
+name: Build Installer
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Inno Setup 6
+        run: choco install innosetup --version=6.3.3 -y --no-progress
+
+      - name: Build EXE
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\setup.iss
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SysViewV6_Setup
+          path: installer\Output\SysViewV6_Setup.exe
+          retention-days: 30
+
+      # Si tu veux creer une release automatique sur un tag (ex: git tag v1.0 && git push --tags)
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installer\Output\SysViewV6_Setup.exe
+          name: SysView V6 ${{ github.ref_name }}
+          body: |
+            ## SysView V6 ${{ github.ref_name }}
+
+            Installeur Windows tout-en-un.
+
+            **Ce que fait l'installeur :**
+            - Telecharge SysView V6 depuis GitHub
+            - Compile SysViewHardware (.NET 8)
+            - Verifie/installe Python
+            - Installe les paquets Python (bridge + Aether)
+            - Telecharge et configure Aether
+            - Lance tous les services
+
+            Double-cliquez sur `SysViewV6_Setup.exe` et suivez l'assistant.
