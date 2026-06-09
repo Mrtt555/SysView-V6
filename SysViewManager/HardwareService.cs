@@ -63,8 +63,8 @@ public sealed class HardwareService : IDisposable
             IsMemoryEnabled  = true,
             IsNetworkEnabled = true,
         };
-        try { _hw.Open(); _hwOpen = true; }
-        catch { _hwOpen = false; }
+        try   { _hw.Open(); _hwOpen = true;  Logger.Info("LHM ouvert — capteurs actifs"); }
+        catch (Exception ex) { _hwOpen = false; Logger.Warn($"LHM indisponible : {ex.Message}"); }
 
         Poll();
 

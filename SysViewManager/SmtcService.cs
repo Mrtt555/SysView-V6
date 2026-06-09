@@ -57,12 +57,14 @@ public sealed class SmtcService : IDisposable
 
             _mgr.SessionsChanged += OnSessionsChanged;
             BindSession(_mgr.GetCurrentSession());
+            Logger.Info("SMTC initialisé — détection native des médias active");
         }
         catch (OperationCanceledException) { /* fermeture propre */ }
-        catch
+        catch (Exception ex)
         {
             // SMTC non disponible sur ce build Windows ou contexte élevé non supporté.
             // L'extension Chrome reste la source médias — aucun impact fonctionnel.
+            Logger.Warn($"SMTC indisponible — fallback extension Chrome ({ex.GetType().Name}: {ex.Message})");
         }
     }
 

@@ -24,7 +24,10 @@ static class Program
 
         // ── Dossier de données ────────────────────────────────────────────────
         Directory.CreateDirectory(AppDataDir);
-        Directory.CreateDirectory(Path.Combine(AppDataDir, "logs"));
+        var logsDir = Path.Combine(AppDataDir, "logs");
+        Directory.CreateDirectory(logsDir);
+        Logger.Init(logsDir);
+        Logger.Info($"=== SysView V6 démarrage (PID {Environment.ProcessId}) ===");
 
         // ── Instance unique ───────────────────────────────────────────────────
         using var mutex = new Mutex(true, "Global\\SysViewManagerMutex", out bool isNew);
@@ -67,6 +70,7 @@ static class Program
         Application.Run(tray);
 
         // ── Nettoyage à la fermeture ──────────────────────────────────────────
+        Logger.Info("=== SysView V6 arrêt ===");
         cts.Cancel();
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763)) smtc?.Dispose();
         try { srv.Wait(TimeSpan.FromSeconds(3)); } catch { }

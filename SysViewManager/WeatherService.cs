@@ -156,13 +156,19 @@ public sealed class WeatherService : IDisposable
                 bool ok = false;
                 try
                 {
+                    Logger.Info($"Météo fetch — modèle={modelId} lat={G(lat)} lon={G(lon)}");
                     var data = await FetchLiveAsync(lat, lon, modelId);
                     lock (_mu) _data = data;
                     WriteWeatherJson(data);
                     fail = 0;
                     ok   = true;
+                    Logger.Info($"Météo OK — {data.Temp}°C, code={data.WeatherCode}, vent={data.Wind} km/h");
                 }
-                catch { fail++; }
+                catch (Exception ex)
+                {
+                    fail++;
+                    Logger.Error($"Météo fetch échoué (tentative {fail})", ex);
+                }
 
                 // Délai : intervalle normal si ok, backoff exponentiel sinon
                 int delay = ok
