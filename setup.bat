@@ -54,9 +54,9 @@ set "_AETHER=!_DEST!\Aether"
 set "_HW_DIR=!_DEST!\SysViewHardware"
 
 echo.
-echo  >>> SysView V6 : !_DEST!
+echo  ^>^>^> SysView V6 : !_DEST!
 echo.
->> "%_LOGFILE%" echo [%TIME:~0,8%] Chemin cible : !_DEST!
+call :log "Chemin cible : !_DEST!"
 pause
 
 :: Verifier que le dossier parent SysView existe
