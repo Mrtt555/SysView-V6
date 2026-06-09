@@ -71,7 +71,7 @@ jobs:
       - name: Verify output
         shell: pwsh
         run: |
-          $exe = "SysViewManager/bin/Release/net8.0-windows/win-x64/publish/SysViewManager.exe"
+          $exe = "SysViewManager/bin/Release/net8.0-windows10.0.17763.0/win-x64/publish/SysViewManager.exe"
           if (!(Test-Path $exe)) { Write-Error "SysViewManager.exe introuvable!"; exit 1 }
           $size = (Get-Item $exe).Length / 1MB
           Write-Host "SysViewManager.exe — $([math]::Round($size, 1)) MB"
@@ -116,4 +116,4 @@ jobs:
             POST http://127.0.0.1:5001/v1/media
             ```
           files: |
-            SysViewManager/bin/Release/net8.0-windows/win-x64/publish/SysViewManager.exe
+            SysViewManager/bin/Release/net8.0-windows10.0.17763.0/win-x64/publish/SysViewManager.exe

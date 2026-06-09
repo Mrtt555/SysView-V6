@@ -46,8 +46,19 @@ static class Program
         using var weather = new WeatherService(rtCfg, AppDataDir);
         var media         = new MediaState();
 
-        // ── Bridge HTTP (ASP.NET Core) sur thread background ─────────────────
+        // ── SMTC — détection native du média en cours ─────────────────────────
+        // Événementiel (zéro CPU si rien ne joue). Silencieux si SMTC indisponible.
+        // Priorité : extension Chrome (POST /v1/media) > SMTC.
+        // Requiert Windows 10 1809 (17763+) — guard explicite pour éviter CA1416.
         var cts    = new CancellationTokenSource();
+        SmtcService? smtc = null;
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763))
+        {
+            smtc = new SmtcService(media);
+            _ = smtc.StartAsync(cts.Token);
+        }
+
+        // ── Bridge HTTP (ASP.NET Core) sur thread background ─────────────────
         var bridge = new BridgeServer(hwSvc, diskSvc, weather, media, rtCfg);
         var srv    = Task.Run(() => bridge.RunAsync(cts.Token));
 
@@ -57,6 +68,7 @@ static class Program
 
         // ── Nettoyage à la fermeture ──────────────────────────────────────────
         cts.Cancel();
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763)) smtc?.Dispose();
         try { srv.Wait(TimeSpan.FromSeconds(3)); } catch { }
     }
 
