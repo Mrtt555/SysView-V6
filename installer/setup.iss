@@ -14,6 +14,9 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=Mrtt555
 AppPublisherURL={#AppURL}
+; Requis par IS6 -- la vraie selection se fait via TInputDirWizardPage dans [Code]
+DefaultDirName={autopf}\SysView V6
+DisableDirPage=yes
 ; Pas de desinstalleur : plugin Wallpaper Engine, pas une appli Windows
 CreateUninstallRegKey=no
 Uninstallable=no
