@@ -60,7 +60,7 @@ if exist "!_DEST!\" (
     echo  Les fichiers seront mis a jour (runtime_config.json conserve, Aether retelecharge).
     echo.
     set /p "_OK=  Continuer ? (O / N) : "
-    if /i "!_OK:~0,1!" NEQ "O" (  :: B-43 : accepte "Oui", "ok", etc.
+    if /i "!_OK:~0,1!" NEQ "O" (
         echo Installation annulee.
         pause ^& exit /b 0
     )
@@ -142,7 +142,7 @@ for /f "tokens=*" %%D in ('where dotnet 2^>nul') do if not defined _DOTNET set "
 
 if defined _DOTNET (
     set "_SDK_OK=0"
-    for /f "tokens=1 delims=." %%V in ('dotnet --version 2^>nul') do (set /a "_SDKVER=%%V" >nul & if !_SDKVER! GEQ 8 set "_SDK_OK=1")  :: B-44 : comparaison numerique (evite "10"<"8" en tri lexical)
+    for /f "tokens=1 delims=." %%V in ('dotnet --version 2^>nul') do (set /a "_SDKVER=%%V" >nul & if !_SDKVER! GEQ 8 set "_SDK_OK=1")
     if not "!_SDK_OK!"=="1" set "_DOTNET="
 )
 
