@@ -490,6 +490,18 @@ echo  Demarrage automatique au login Windows :
 echo    - Bridge + Aether : raccourci Startup
 echo    - SysViewHardware : tache planifiee (avec droits admin)
 echo.
+:: Mise a jour du standalone en arriere-plan APRES fermeture du script
+:: (evite de remplacer le fichier en cours d'execution -- process separe avec delai)
+if /i not "!_SETUP_DIR!"=="!_DEST!" (
+    if exist "!_DEST!\setup.bat" (
+        > "%TEMP%\_sv_upd.bat" (
+            echo @echo off
+            echo ping -n 4 127.0.0.1 ^>nul
+            echo copy /y "!_DEST!\setup.bat" "%~f0" ^>nul 2^>^&1
+        )
+        start "" /b cmd /c "%TEMP%\_sv_upd.bat"
+    )
+)
 endlocal
 pause
 goto :eof
