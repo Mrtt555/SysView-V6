@@ -97,6 +97,9 @@ if (-not $NoSign) {
     Write-Host ""
     Write-Host "  ── Signature de code ──────────────────────────────" -ForegroundColor DarkCyan
 
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+                [Security.Principal.WindowsBuiltInRole]::Administrator)
+
     # Chercher le certificat Astralcodes dans le store personnel
     $cert = Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert -ErrorAction SilentlyContinue |
             Where-Object { $_.Subject -eq "CN=Astralcodes" } |
@@ -107,55 +110,74 @@ if (-not $NoSign) {
         Write-Host "  Certificat introuvable — création d'un nouveau certificat Astralcodes..." -ForegroundColor Yellow
 
         $cert = New-SelfSignedCertificate `
-            -Subject        "CN=Astralcodes" `
-            -FriendlyName   "Astralcodes Code Signing" `
+            -Subject           "CN=Astralcodes" `
+            -FriendlyName      "Astralcodes Code Signing" `
             -CertStoreLocation "Cert:\CurrentUser\My" `
-            -KeyUsage       DigitalSignature `
-            -Type           CodeSigningCert `
-            -HashAlgorithm  SHA256 `
-            -NotAfter       (Get-Date).AddYears(10)
+            -KeyUsage          DigitalSignature `
+            -Type              CodeSigningCert `
+            -HashAlgorithm     SHA256 `
+            -NotAfter          (Get-Date).AddYears(10)
 
-        # Ajouter aux stores de confiance de la machine courante
-        foreach ($storeName in @("Root", "TrustedPublisher")) {
-            $store = New-Object System.Security.Cryptography.X509Certificates.X509Store(
-                $storeName,
-                [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
-            $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-            $store.Add($cert)
-            $store.Close()
-        }
         Write-Host "  Certificat créé (valide 10 ans) — Thumbprint : $($cert.Thumbprint)" -ForegroundColor Green
 
-        # Exporter le .cer public pour les amis
+        # Exporter le .cer public (pour les amis + install-cert.ps1)
         New-Item -ItemType Directory -Force -Path $certDir | Out-Null
         [System.IO.File]::WriteAllBytes(
             $cerFile,
             $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
         Write-Host "  Certificat public exporté : $cerFile" -ForegroundColor Green
-        Write-Host "  → Partagez ce fichier + install-cert.ps1 avec vos amis (à exécuter une seule fois en admin)" -ForegroundColor Yellow
     } else {
-        Write-Host "  Certificat trouvé — Thumbprint : $($cert.Thumbprint.Substring(0,16))..." -ForegroundColor Gray
+        Write-Host "  Certificat Astralcodes trouvé — Thumbprint : $($cert.Thumbprint.Substring(0,16))..." -ForegroundColor Gray
     }
 
-    # Signer l'exe
+    # ── Installer dans les stores de confiance ────────────────────────────────
+    # UAC vérifie LocalMachine → nécessite admin.
+    # Sans admin, on installe dans CurrentUser (signature OK mais UAC dit toujours "inconnu").
+    $storeLocation = if ($isAdmin) {
+        [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine
+    } else {
+        [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
+    }
+    $locationLabel = if ($isAdmin) { "LocalMachine" } else { "CurrentUser" }
+
+    foreach ($storeName in @("Root", "TrustedPublisher")) {
+        try {
+            $store = New-Object System.Security.Cryptography.X509Certificates.X509Store($storeName, $storeLocation)
+            $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+            $already = $store.Certificates | Where-Object { $_.Thumbprint -eq $cert.Thumbprint }
+            if (-not $already) { $store.Add($cert) }
+            $store.Close()
+        } catch { }
+    }
+
+    if ($isAdmin) {
+        Write-Host "  Certificat installé dans LocalMachine (UAC affichera 'Astralcodes')" -ForegroundColor Green
+    } else {
+        Write-Host ""
+        Write-Host "  ATTENTION : publish.ps1 n'est pas lancé en admin." -ForegroundColor Yellow
+        Write-Host "  Le certificat est dans CurrentUser uniquement — UAC affiche encore 'éditeur inconnu'." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  Pour corriger : clic droit sur install-cert.ps1 → Exécuter en tant qu'administrateur" -ForegroundColor Cyan
+        Write-Host "  (une seule fois suffit — valable pour tous les builds futurs)" -ForegroundColor Gray
+        Write-Host ""
+    }
+
+    # ── Signer l'exe ──────────────────────────────────────────────────────────
     Write-Host "  Signature de SysViewManager.exe..." -ForegroundColor Gray
     try {
-        # Avec horodatage (la signature reste valide même après expiration du cert)
         $sig = Set-AuthenticodeSignature `
             -FilePath        $exe `
             -Certificate     $cert `
             -TimestampServer "http://timestamp.digicert.com"
     } catch {
-        # Serveur d'horodatage inaccessible — signer sans timestamp
         Write-Host "  Serveur de timestamp inaccessible — signature sans horodatage" -ForegroundColor Yellow
         $sig = Set-AuthenticodeSignature -FilePath $exe -Certificate $cert
     }
 
     if ($sig.Status -eq "Valid") {
-        Write-Host "  Signature OK — SysViewManager.exe est signé par Astralcodes" -ForegroundColor Green
+        Write-Host "  Signature OK" -ForegroundColor Green
     } else {
         Write-Host "  Signature : $($sig.Status) — $($sig.StatusMessage)" -ForegroundColor Yellow
-        Write-Host "  (L'exe fonctionne mais affichera toujours 'éditeur inconnu')" -ForegroundColor Gray
     }
 }
 
