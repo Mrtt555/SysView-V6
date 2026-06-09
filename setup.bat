@@ -198,7 +198,7 @@ echo  Demarrage simple configure. Pour les capteurs : clic droit "Executer en ta
 echo  Lancement de SysViewHardware ^(sans UAC via tache planifiee^)...
 schtasks /run /tn "SysViewHardware" >nul 2>&1
 if errorlevel 1 (
-    :: Tache planifiee indisponible ^(droits insuffisants^) -- fallback avec UAC
+    rem Tache planifiee indisponible -- fallback avec UAC
     echo  ^(tache planifiee indisponible -- UAC necessaire^)
     powershell -NoProfile -Command "Start-Process '!_HW_EXE!' -Verb RunAs"
 )
