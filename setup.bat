@@ -1,5 +1,19 @@
 @echo off
 setlocal enabledelayedexpansion
+
+:: =========================================================
+:: LOG -- ecrit dans %TEMP% pendant l'execution,
+::        copie dans !_DEST!\logs\setup.log a la fin.
+::        (le dossier !_DEST!\ est efface a l'etape 1/6,
+::         le fichier temporaire survit.)
+:: =========================================================
+set "_LOGFILE=%TEMP%\sysview_setup.log"
+(
+  echo [%DATE% %TIME:~0,8%] ================================================
+  echo [%DATE% %TIME:~0,8%] SysView V6 -- Setup
+  echo [%DATE% %TIME:~0,8%] ================================================
+) > "%_LOGFILE%"
+
 title SysView V6 -- Installation complete
 
 echo.
@@ -42,11 +56,12 @@ set "_HW_DIR=!_DEST!\SysViewHardware"
 echo.
 echo  >>> SysView V6 : !_DEST!
 echo.
+>> "%_LOGFILE%" echo [%TIME:~0,8%] Chemin cible : !_DEST!
 pause
 
 :: Verifier que le dossier parent SysView existe
 if not exist "!_BASE!\" (
-    echo [ERREUR] Dossier introuvable : !_BASE!
+    call :log "[ERREUR] Dossier introuvable : !_BASE!"
     echo.
     echo  Conseil : dans Wallpaper Engine, faites un clic droit
     echo  sur un wallpaper -^> "Ouvrir le dossier" pour trouver
@@ -61,7 +76,7 @@ if exist "!_DEST!\" (
     echo.
     set /p "_OK=  Continuer ? (O / N) : "
     if /i "!_OK:~0,1!" NEQ "O" (
-        echo Installation annulee.
+        call :log "[INFO] Installation annulee par l'utilisateur."
         pause ^& exit /b 0
     )
     echo.
@@ -69,7 +84,7 @@ if exist "!_DEST!\" (
 
 :: 1/6 -- SysView V6 (GitHub)
 :: =========================================================
-echo [1/6] Telechargement de SysView V6 depuis GitHub...
+call :log "[1/6] Telechargement de SysView V6 depuis GitHub..."
 echo ---------------------------------------------------------
 set "_ZIP=%TEMP%\sysview_setup.zip"
 set "_TMP=%TEMP%\sysview_setup_tmp"
@@ -78,15 +93,15 @@ if exist "!_TMP!" powershell -NoProfile -Command "Remove-Item '!_TMP!' -Recurse 
 if exist "!_ZIP!" del "!_ZIP!" >nul 2>&1
 
 echo  Connexion a GitHub...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest 'https://github.com/Mrtt555/SysView-V6/archive/refs/heads/master.zip' -OutFile '!_ZIP!' -UseBasicParsing -ErrorAction Stop"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest 'https://github.com/Mrtt555/SysView-V6/archive/refs/heads/master.zip' -OutFile '!_ZIP!' -UseBasicParsing -ErrorAction Stop" >> "%_LOGFILE%" 2>&1
 if errorlevel 1 (
-    echo [ERREUR] Telechargement echoue. Verifiez votre connexion.
+    call :log "[ERREUR] Telechargement echoue. Verifiez votre connexion."
     pause & exit /b 1
 )
 echo  Extraction...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive '!_ZIP!' -DestinationPath '!_TMP!' -Force"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive '!_ZIP!' -DestinationPath '!_TMP!' -Force" >> "%_LOGFILE%" 2>&1
 if errorlevel 1 (
-    echo [ERREUR] Extraction echouee.
+    call :log "[ERREUR] Extraction echouee."
     pause & exit /b 1
 )
 del "!_ZIP!" >nul 2>&1
@@ -94,11 +109,11 @@ del "!_ZIP!" >nul 2>&1
 set "_SRC="
 for /d %%D in ("%_TMP%\*") do if not defined _SRC set "_SRC=%%D"
 if not defined _SRC (
-    echo [ERREUR] Archive vide ou structure inattendue.
+    call :log "[ERREUR] Archive vide ou structure inattendue."
     pause & exit /b 1
 )
 
-:: Sauvegarder API\runtime_config.json (config perso — ville, intervalle, etc.)
+:: Sauvegarder API\runtime_config.json (config perso -- ville, intervalle, etc.)
 :: Aether n'est pas sauvegarde : il est toujours retelecharge frais depuis GitHub a l'etape 5.
 set "_BCK=%TEMP%\sysview_bck"
 if exist "!_BCK!" powershell -NoProfile -Command "Remove-Item '!_BCK!' -Recurse -Force -ErrorAction SilentlyContinue"
@@ -109,7 +124,7 @@ if exist "!_API!\runtime_config.json" copy /y "!_API!\runtime_config.json" "!_BC
 if exist "!_DEST!\" powershell -NoProfile -Command "Remove-Item '!_DEST!' -Recurse -Force"
 powershell -NoProfile -Command "Move-Item '!_SRC!' '!_DEST!'"
 if not exist "!_DEST!\SysView.html" (
-    echo [ERREUR] SysView.html introuvable apres extraction.
+    call :log "[ERREUR] SysView.html introuvable apres extraction."
     pause & exit /b 1
 )
 powershell -NoProfile -Command "Remove-Item '!_TMP!' -Recurse -Force -ErrorAction SilentlyContinue"
@@ -118,21 +133,21 @@ powershell -NoProfile -Command "Remove-Item '!_TMP!' -Recurse -Force -ErrorActio
 if exist "!_BCK!\runtime_config.json" copy /y "!_BCK!\runtime_config.json" "!_API!\runtime_config.json" >nul 2>&1
 powershell -NoProfile -Command "Remove-Item '!_BCK!' -Recurse -Force -ErrorAction SilentlyContinue"
 
-echo [OK] SysView V6 installe : !_DEST!
+call :log "[OK] SysView V6 installe : !_DEST!"
 echo.
 
 
 :: =========================================================
 :: 2/6 -- SYSVIEWHARDWARE (capteurs C# via LibreHardwareMonitorLib)
 :: =========================================================
-echo [2/6] Compilation de SysViewHardware...
+call :log "[2/6] Compilation de SysViewHardware..."
 echo ---------------------------------------------------------
 
 set "_HW_EXE=!_HW_DIR!\bin\Release\net8.0-windows\win-x64\publish\SysViewHardware.exe"
 set "_HW_PROJ=!_HW_DIR!\SysViewHardware.csproj"
 
 if exist "!_HW_EXE!" (
-    echo [INFO] SysViewHardware.exe deja present -- compilation ignoree.
+    call :log "[INFO] SysViewHardware.exe deja present -- compilation ignoree."
     goto :hw_startup
 )
 
@@ -148,51 +163,52 @@ if defined _DOTNET (
 
 if not defined _DOTNET (
     echo  SDK .NET 8 introuvable -- installation ^(~200 Mo, quelques minutes^)...
+    >> "%_LOGFILE%" echo [%TIME:~0,8%] SDK .NET 8 absent -- telechargement...
     powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-        "& { $f='%TEMP%\dotnet-install.ps1'; Invoke-WebRequest 'https://dot.net/v1/dotnet-install.ps1' -OutFile $f -UseBasicParsing; & $f -Channel 8.0 -InstallDir '$env:USERPROFILE\.dotnet' }"
+        "& { $f='%TEMP%\dotnet-install.ps1'; Invoke-WebRequest 'https://dot.net/v1/dotnet-install.ps1' -OutFile $f -UseBasicParsing; & $f -Channel 8.0 -InstallDir '$env:USERPROFILE\.dotnet' }" >> "%_LOGFILE%" 2>&1
     if errorlevel 1 (
-        echo [ERREUR] Installation SDK .NET 8 echouee.
+        call :log "[ERREUR] Installation SDK .NET 8 echouee."
         pause ^& exit /b 1
     )
     set "_DOTNET=%USERPROFILE%\.dotnet\dotnet.exe"
 )
 
 if not exist "!_HW_PROJ!" (
-    echo [ERREUR] Projet introuvable : !_HW_PROJ!
+    call :log "[ERREUR] Projet introuvable : !_HW_PROJ!"
     goto :fail
 )
 
 echo  Compilation en cours ^(premiere fois ~2-3 min -- NuGet + build^)...
-"!_DOTNET!" publish "!_HW_PROJ!" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none --nologo -v quiet
+"!_DOTNET!" publish "!_HW_PROJ!" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none --nologo -v quiet >> "%_LOGFILE%" 2>&1
 if errorlevel 1 (
-    echo [ERREUR] Compilation SysViewHardware echouee.
+    call :log "[ERREUR] Compilation SysViewHardware echouee."
     echo  Verifiez que le projet est intact : !_HW_PROJ!
     pause ^& exit /b 1
 )
 
 if not exist "!_HW_EXE!" (
-    echo [ERREUR] SysViewHardware.exe introuvable apres compilation.
+    call :log "[ERREUR] SysViewHardware.exe introuvable apres compilation."
     pause ^& exit /b 1
 )
-echo [OK] SysViewHardware.exe compile ^(autonome^).
+call :log "[OK] SysViewHardware.exe compile (autonome)."
 
 :hw_startup
 :: --- Demarrage automatique avec privileges admin via Task Scheduler ---
 echo  Demarrage automatique ^(admin^) : configuration...
 schtasks /query /tn "SysViewHardware" >nul 2>&1
 if not errorlevel 1 (
-    echo [INFO] Tache planifiee SysViewHardware deja presente.
+    call :log "[INFO] Tache planifiee SysViewHardware deja presente."
     goto :hw_launch
 )
 schtasks /create /tn "SysViewHardware" /tr "\"!_HW_EXE!\"" /sc ONLOGON /rl HIGHEST /f >nul 2>&1
 if not errorlevel 1 (
-    echo [OK] Tache planifiee : SysViewHardware demarre au login avec droits admin.
+    call :log "[OK] Tache planifiee : SysViewHardware demarre au login avec droits admin."
     goto :hw_launch
 )
 :: Fallback sans droits admin
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "SysViewHardware" /t REG_SZ /d "\"!_HW_EXE!\"" /f >nul 2>&1
-echo [AVERT] Tache planifiee impossible ^(droits insuffisants^).
-echo  Demarrage simple configure. Pour les capteurs : clic droit "Executer en tant qu'administrateur".
+call :log "[AVERT] Tache planifiee impossible (droits insuffisants) -- demarrage simple configure."
+echo  Pour les capteurs : clic droit "Executer en tant qu'administrateur".
 
 :hw_launch
 echo  Lancement de SysViewHardware ^(sans UAC via tache planifiee^)...
@@ -202,28 +218,29 @@ if errorlevel 1 (
     echo  ^(tache planifiee indisponible -- UAC necessaire^)
     powershell -NoProfile -Command "Start-Process '!_HW_EXE!' -Verb RunAs"
 )
-echo [OK] SysViewHardware lance ^(port 8086^).
+call :log "[OK] SysViewHardware lance (port 8086)."
 echo.
 
 :: 3/6 -- PYTHON
 :: =========================================================
-echo [3/6] Verification de Python...
+call :log "[3/6] Verification de Python..."
 echo ---------------------------------------------------------
 python --version >nul 2>&1
 if not errorlevel 1 goto :have_python
 
 echo  Python introuvable -- telechargement automatique...
 echo  (quelques minutes selon votre connexion)
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& { $r=(Invoke-WebRequest 'https://www.python.org/downloads/' -UseBasicParsing).Content; $v=([regex]'Download Python (\d+\.\d+\.\d+)').Match($r).Groups[1].Value; if(!$v){throw 'Version introuvable'}; Write-Host('  -> Python '+$v); $f=$env:TEMP+'\pysetup.exe'; Invoke-WebRequest('https://www.python.org/ftp/python/'+$v+'/python-'+$v+'-amd64.exe') -OutFile $f -UseBasicParsing; Start-Process -Wait $f '/quiet InstallAllUsers=0 PrependPath=1 Include_test=0'; Remove-Item $f -ErrorAction SilentlyContinue }"
+>> "%_LOGFILE%" echo [%TIME:~0,8%] Python absent -- telechargement...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& { $r=(Invoke-WebRequest 'https://www.python.org/downloads/' -UseBasicParsing).Content; $v=([regex]'Download Python (\d+\.\d+\.\d+)').Match($r).Groups[1].Value; if(!$v){throw 'Version introuvable'}; Write-Host('  -> Python '+$v); $f=$env:TEMP+'\pysetup.exe'; Invoke-WebRequest('https://www.python.org/ftp/python/'+$v+'/python-'+$v+'-amd64.exe') -OutFile $f -UseBasicParsing; Start-Process -Wait $f '/quiet InstallAllUsers=0 PrependPath=1 Include_test=0'; Remove-Item $f -ErrorAction SilentlyContinue }" >> "%_LOGFILE%" 2>&1
 if errorlevel 1 (
     echo.
-    echo [ERREUR] Installation Python echouee.
+    call :log "[ERREUR] Installation Python echouee."
     echo  Installez manuellement depuis https://python.org
     echo  IMPORTANT : ne pas utiliser la version Microsoft Store.
     echo.
     pause & exit /b 1
 )
-echo [OK] Python installe.
+call :log "[OK] Python installe."
 echo.
 for /f "tokens=2*" %%A in ('reg query "HKCU\Environment" /v PATH 2^>nul') do set "_NP=%%B"
 if defined _NP set "PATH=!_NP!;%PATH%"
@@ -233,70 +250,71 @@ set "_NP="
 set "_PY="
 for /f "tokens=*" %%P in ('where python 2^>nul') do if not defined _PY set "_PY=%%P"
 if not defined _PY (
-    echo [ERREUR] python.exe introuvable dans PATH.
+    call :log "[ERREUR] python.exe introuvable dans PATH."
     pause & exit /b 1
 )
 set "_PYW=!_PY:python.exe=pythonw.exe!"
 if not exist "!_PYW!" set "_PYW=!_PY!"
-echo [INFO] Python  : !_PY!
-echo [INFO] Pythonw : !_PYW!
+call :log "[INFO] Python  : !_PY!"
+call :log "[INFO] Pythonw : !_PYW!"
 echo.
 
 :: =========================================================
 :: 4/6 -- PAQUETS PYTHON (BRIDGE + AETHER)
 :: =========================================================
-echo [4/6] Installation des paquets Python (bridge + Aether)...
+call :log "[4/6] Installation des paquets Python (bridge + Aether)..."
 echo ---------------------------------------------------------
 echo  Mise a jour de pip...
-"!_PY!" -m pip install --upgrade --quiet pip
+"!_PY!" -m pip install --upgrade --quiet pip >> "%_LOGFILE%" 2>&1
 echo  Installation des paquets...
-"!_PY!" -m pip install --quiet fastapi "uvicorn[standard]" requests psutil slowapi httpx python-multipart "pydantic>=2.7.0"
+"!_PY!" -m pip install --quiet fastapi "uvicorn[standard]" requests psutil slowapi httpx python-multipart "pydantic>=2.7.0" >> "%_LOGFILE%" 2>&1
 if errorlevel 1 (
-    echo [ERREUR] pip install a echoue.
+    call :log "[ERREUR] pip install a echoue."
     pause & exit /b 1
 )
-"!_PY!" -c "import fastapi, uvicorn, requests, psutil, slowapi, httpx, multipart, pydantic; print('[OK] fastapi uvicorn requests psutil slowapi httpx python-multipart pydantic -- OK')"
+"!_PY!" -c "import fastapi, uvicorn, requests, psutil, slowapi, httpx, multipart, pydantic; print('[OK] fastapi uvicorn requests psutil slowapi httpx python-multipart pydantic -- OK')" >> "%_LOGFILE%" 2>&1
 if errorlevel 1 (
-    echo [ERREUR] Verification des paquets echouee.
+    call :log "[ERREUR] Verification des paquets echouee."
     pause & exit /b 1
 )
+call :log "[OK] fastapi uvicorn requests psutil slowapi httpx python-multipart pydantic -- OK"
 echo.
 
 :: =========================================================
 :: 5/6 -- AETHER (proxy Open-Meteo)
 :: =========================================================
-echo [5/6] Installation d'Aether (proxy Open-Meteo)...
+call :log "[5/6] Installation d'Aether (proxy Open-Meteo)..."
 echo ---------------------------------------------------------
 if not exist "!_AETHER!\main.py" (
     echo  Telechargement d'Aether depuis GitHub...
     set "_AZ=%TEMP%\aether_dl.zip"
     set "_AT=%TEMP%\aether_tmp"
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest 'https://github.com/Mrtt555/Aether/archive/refs/heads/main.zip' -OutFile '%_AZ%' -UseBasicParsing -ErrorAction Stop"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest 'https://github.com/Mrtt555/Aether/archive/refs/heads/main.zip' -OutFile '%_AZ%' -UseBasicParsing -ErrorAction Stop" >> "%_LOGFILE%" 2>&1
     if errorlevel 1 (
-        echo [ERREUR] Telechargement Aether echoue.
+        call :log "[ERREUR] Telechargement Aether echoue."
         pause & exit /b 1
     )
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive '%_AZ%' -DestinationPath '%_AT%' -Force; $sub=(Get-ChildItem '%_AT%' -Directory | Select-Object -First 1).FullName; Move-Item $sub '!_AETHER!'; Remove-Item '%_AZ%','%_AT%' -Recurse -Force -ErrorAction SilentlyContinue"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive '%_AZ%' -DestinationPath '%_AT%' -Force; $sub=(Get-ChildItem '%_AT%' -Directory | Select-Object -First 1).FullName; Move-Item $sub '!_AETHER!'; Remove-Item '%_AZ%','%_AT%' -Recurse -Force -ErrorAction SilentlyContinue" >> "%_LOGFILE%" 2>&1
     if not exist "!_AETHER!\main.py" (
-        echo [ERREUR] Installation Aether echouee -- main.py introuvable.
+        call :log "[ERREUR] Installation Aether echouee -- main.py introuvable."
         pause & exit /b 1
     )
-    echo [OK] Aether telecharge.
+    call :log "[OK] Aether telecharge."
 ) else (
-    echo [INFO] Aether deja present -- paquets mis a jour uniquement.
+    call :log "[INFO] Aether deja present -- paquets mis a jour uniquement."
 )
-"!_PY!" -m pip install --quiet -r "!_AETHER!\requirements.txt"
+"!_PY!" -m pip install --quiet -r "!_AETHER!\requirements.txt" >> "%_LOGFILE%" 2>&1
 if errorlevel 1 (
-    echo [ERREUR] Paquets Aether echec.
+    call :log "[ERREUR] Paquets Aether echec."
     pause & exit /b 1
 )
-echo [OK] Aether pret -- interface sur http://127.0.0.1:8001
+call :log "[OK] Aether pret -- interface sur http://127.0.0.1:8001"
 echo.
 
 :: =========================================================
 :: 6/6 -- DEMARRAGE AUTOMATIQUE + LANCEMENT BRIDGE
 :: =========================================================
-echo [6/6] Demarrage automatique + lancement bridge...
+call :log "[6/6] Demarrage automatique + lancement bridge..."
 echo ---------------------------------------------------------
 
 :: Raccourci Startup Windows pour le bridge
@@ -304,9 +322,9 @@ set "_SHORTCUT=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\SysViewBr
 >"!_SHORTCUT!" echo @echo off
 >>"!_SHORTCUT!" echo start "" "!_PYW!" "!_API!\SysViewBridge.pyw"
 if exist "!_SHORTCUT!" (
-    echo [OK] Bridge : demarrage automatique au login Windows configure.
+    call :log "[OK] Bridge : demarrage automatique au login Windows configure."
 ) else (
-    echo [AVERT] Raccourci de demarrage bridge non cree.
+    call :log "[AVERT] Raccourci de demarrage bridge non cree."
 )
 echo.
 
@@ -320,23 +338,23 @@ if exist "!_API!\bridge.pid" (
 )
 for /f "tokens=5" %%P in ('netstat -ano 2^>nul ^| findstr ":5001 " ^| findstr "LISTENING"') do (
     if not "%%P"=="0" (
-        echo [INFO] port 5001 occupe ^(PID %%P^) -- arret...
+        call :log "[INFO] port 5001 occupe (PID %%P) -- arret..."
         taskkill /PID %%P /F /T >nul 2>&1
         set "_PORT_BUSY=1"
     )
 )
 for /f "tokens=5" %%P in ('netstat -ano 2^>nul ^| findstr ":8001 " ^| findstr "LISTENING"') do (
     if not "%%P"=="0" (
-        echo [INFO] port 8001 occupe ^(PID %%P^) -- arret...
+        call :log "[INFO] port 8001 occupe (PID %%P) -- arret..."
         taskkill /PID %%P /F /T >nul 2>&1
         set "_PORT_BUSY=1"
     )
 )
 if "!_PORT_BUSY!"=="1" (
-    echo [OK] Ports liberes.
+    call :log "[OK] Ports liberes."
     ping -n 3 127.0.0.1 >nul
 ) else (
-    echo [OK] ports 5001 et 8001 disponibles.
+    call :log "[OK] Ports 5001 et 8001 disponibles."
 )
 echo.
 
@@ -354,12 +372,11 @@ if !_WAIT! geq 15 goto :timeout
 goto :wait_loop
 
 :timeout
-echo [AVERT] Bridge non detecte.
-echo  Verifiez : !_API!\logs\sysview.log
+call :log "[AVERT] Bridge non detecte -- verifiez !_API!\logs\sysview.log"
 goto :launch_done
 
 :started
-echo [OK] Bridge demarre ^(port 5001^).
+call :log "[OK] Bridge demarre (port 5001)."
 
 set "_AW=0"
 :aether_wait
@@ -367,17 +384,27 @@ ping -n 4 127.0.0.1 >nul
 set /a "_AW=!_AW!+4"
 powershell -NoProfile -Command "try{$r=(Invoke-WebRequest 'http://127.0.0.1:8001' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop).StatusCode; if($r -eq 200){exit 0}else{exit 1}}catch{exit 1}" >nul 2>&1
 if not errorlevel 1 (
-    echo [OK] Aether demarre ^(port 8001^).
+    call :log "[OK] Aether demarre (port 8001)."
     goto :launch_done
 )
 if !_AW! geq 20 (
-    echo [AVERT] Aether ne repond pas encore ^(demarre en arriere-plan^).
+    call :log "[AVERT] Aether ne repond pas encore (demarre en arriere-plan)."
     goto :launch_done
 )
 goto :aether_wait
 
 :launch_done
 echo.
+
+:: =========================================================
+:: COPIE DU LOG DANS !_DEST!\logs\setup.log
+:: =========================================================
+>> "%_LOGFILE%" echo [%TIME:~0,8%] ================================================
+>> "%_LOGFILE%" echo [%TIME:~0,8%] Setup termine.
+>> "%_LOGFILE%" echo [%TIME:~0,8%] ================================================
+if not exist "!_DEST!\logs" mkdir "!_DEST!\logs"
+copy /y "%_LOGFILE%" "!_DEST!\logs\setup.log" >nul 2>&1
+echo  Log : !_DEST!\logs\setup.log
 
 :: =========================================================
 :: FIN
@@ -411,9 +438,22 @@ echo    - SysViewHardware : tache planifiee (avec droits admin)
 echo.
 endlocal
 pause
+goto :eof
+
+:: =========================================================
+:: SOUS-ROUTINES
+:: =========================================================
+
+:log
+echo %~1
+>> "%_LOGFILE%" echo [%TIME:~0,8%] %~1
+goto :eof
 
 :fail
 echo.
+>> "%_LOGFILE%" echo [%TIME:~0,8%] [ECHEC] Setup interrompu.
+if not exist "!_DEST!\logs" mkdir "!_DEST!\logs" >nul 2>&1
+copy /y "%_LOGFILE%" "!_DEST!\logs\setup.log" >nul 2>&1
 endlocal
 pause
 exit /b 1
