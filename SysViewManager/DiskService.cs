@@ -49,13 +49,17 @@ public sealed class DiskService : IDisposable
         string uU = usedGb  >= 1024 ? "To" : "Go";
         string tU = totalGb >= 1024 ? "To" : "Go";
         string fU = freeGb  >= 1024 ? "To" : "Go";
-        double uD = uU == "To" ? Math.Round(usedGb  / 1024, 2) : usedGb;
-        double tD = tU == "To" ? Math.Round(totalGb / 1024, 2) : totalGb;
+        // Valeurs déjà converties dans la bonne unité :
+        //   Go → valeur en Go (ex. 447.03)
+        //   To → valeur en To (ex. 1.82)  ← le HTML utilise ces valeurs directement
+        double uD = uU == "To" ? Math.Round(usedGb  / 1024, 2) : Math.Round(usedGb,  2);
+        double tD = tU == "To" ? Math.Round(totalGb / 1024, 2) : Math.Round(totalGb, 2);
+        double fD = fU == "To" ? Math.Round(freeGb  / 1024, 2) : Math.Round(freeGb,  2);
         return new DiskInfo
         {
-            UsedGb   = Math.Round(usedGb,  2),
-            TotalGb  = Math.Round(totalGb, 2),
-            FreeGb   = Math.Round(freeGb,  2),
+            UsedGb   = uD,   // valeur dans UsedUnit  (To ou Go)
+            TotalGb  = tD,   // valeur dans TotalUnit (To ou Go)
+            FreeGb   = fD,   // valeur dans FreeUnit  (To ou Go)
             UsedUnit = uU, TotalUnit = tU, FreeUnit = fU,
             Percent  = pct,
             Display  = $"{uD.ToString("F2", IC)}{uU}/{Math.Round(tD, 0).ToString("F0", IC)}{tU}",

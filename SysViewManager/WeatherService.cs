@@ -9,6 +9,7 @@
 //   - /api/config  (write)    → RuntimeConfig.Update()
 //   - /api/live_data          → GetData() + GetFullResponse()
 // =============================================================
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -205,7 +206,7 @@ public sealed class WeatherService : IDisposable
         {
             try
             {
-                var url   = $"{OM_FORECAST}?latitude={lat}&longitude={lon}" +
+                var url   = $"{OM_FORECAST}?latitude={G(lat)}&longitude={G(lon)}" +
                             "&current=precipitation_probability&timezone=auto&format=json";
                 var resp2 = await _http.GetStringAsync(url);
                 precipProb = N<int>(JsonNode.Parse(resp2)?["current"]?["precipitation_probability"]);
@@ -262,7 +263,7 @@ public sealed class WeatherService : IDisposable
 
     private async Task<JsonNode?> FetchCurrentAsync(double lat, double lon, string modelId)
     {
-        var url = $"{OM_FORECAST}?latitude={lat}&longitude={lon}" +
+        var url = $"{OM_FORECAST}?latitude={G(lat)}&longitude={G(lon)}" +
                   $"&current={string.Join(",", DEFAULT_WEATHER_PARAMS)}" +
                   $"&models={modelId}&timezone=auto&forecast_days=1";
         return JsonNode.Parse(await _http.GetStringAsync(url));
@@ -270,7 +271,7 @@ public sealed class WeatherService : IDisposable
 
     private async Task<JsonNode?> FetchForecastAsync(double lat, double lon, string modelId)
     {
-        var url = $"{OM_FORECAST}?latitude={lat}&longitude={lon}" +
+        var url = $"{OM_FORECAST}?latitude={G(lat)}&longitude={G(lon)}" +
                   "&hourly=temperature_2m,precipitation,weather_code,wind_speed_10m" +
                   $"&models={modelId}&timezone=auto&forecast_days=2";
         return JsonNode.Parse(await _http.GetStringAsync(url));
@@ -278,7 +279,7 @@ public sealed class WeatherService : IDisposable
 
     private async Task<JsonNode?> FetchAirAsync(double lat, double lon)
     {
-        var url = $"{OM_AIR}?latitude={lat}&longitude={lon}" +
+        var url = $"{OM_AIR}?latitude={G(lat)}&longitude={G(lon)}" +
                   $"&current={string.Join(",", DEFAULT_AIR_PARAMS)}&timezone=auto";
         return JsonNode.Parse(await _http.GetStringAsync(url));
     }
@@ -331,7 +332,14 @@ public sealed class WeatherService : IDisposable
         catch { }
     }
 
-    // ─── Helper nullable JSON ─────────────────────────────────────────────────
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Formate un double avec la culture invariante (point comme séparateur décimal).
+    /// OBLIGATOIRE pour les URLs Open-Meteo — sinon la locale fr-FR produit "50,78628"
+    /// au lieu de "50.78628", ce qui cause une erreur 400 "Latitude out of range".
+    /// </summary>
+    private static string G(double v) => v.ToString("G", CultureInfo.InvariantCulture);
 
     private static T? N<T>(JsonNode? node) where T : struct
     {
