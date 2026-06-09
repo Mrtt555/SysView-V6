@@ -14,7 +14,7 @@ FastAPI · SysViewHardware · Aether (proxy Open-Meteo)
 Prérequis :
   - Python 3.10+ installé depuis python.org
   - SysViewHardware.exe en Administrateur (port 8086)
-      → inclus dans SysView V6/API V3/SysViewHardware/
+      → inclus dans SysView V6/SysViewHardware/
       → setup.bat le compile et le lance automatiquement
   - Aether (setup.bat le télécharge automatiquement)
       → Interface de config : http://127.0.0.1:8001
@@ -110,7 +110,7 @@ _uvi_err.addHandler(_fh)
 _uvi_err.propagate = False
 
 
-def log_ok(sec, msg):   _logger.info   (f"[{sec:<12}]     {msg}")
+def log_ok(sec, msg):   _logger.info   (f"[{sec:<12}]  OK  {msg}")
 def log_warn(sec, msg): _logger.warning(f"[{sec:<12}]     {msg}")
 def log_err(sec, msg):  _logger.error  (f"[{sec:<12}]     {msg}")
 def log_info(sec, msg): _logger.info   (f"[{sec:<12}]     {msg}")
@@ -133,11 +133,12 @@ async def _lifespan(_app):
             _pf.write(str(os.getpid()))
     except Exception as _e:
         log_warn("SERVER", f"PID non ecrit : {_e}")
-    log_ok("SERVER", f"http://0.0.0.0:{config.API_PORT}")
+    log_ok("SERVER", f"http://127.0.0.1:{config.API_PORT}")
     log_info("SERVER", f"Docs : http://localhost:{config.API_PORT}/docs")
     yield
     # --- arrêt ---
     _aether_stop()
+    _disk_executor.shutdown(wait=False)
     try:
         os.remove(_PID_FILE)
     except Exception:
@@ -150,7 +151,7 @@ async def _lifespan(_app):
 
 app = FastAPI(
     title="SysView Bridge",
-    version="5.0",
+    version="6.0",
     docs_url="/docs",
     lifespan=_lifespan,
 )
@@ -270,7 +271,7 @@ _aether_proc: subprocess.Popen | None = None
 def _aether_start() -> None:
     """Démarre Aether en sous-processus silencieux sur le port 8001."""
     global _aether_proc
-    aether_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aether")
+    aether_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Aether")
     if not os.path.exists(os.path.join(aether_dir, "main.py")):
         log_warn("AETHER", f"Non trouvé dans {aether_dir} — lancez install.bat")
         return
@@ -373,8 +374,8 @@ def _save_runtime() -> None:
             }
         with open(RUNTIME_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
-    except Exception:
-        pass
+    except Exception as e:
+        log_warn("CONFIG", f"runtime_config.json non sauvegardé : {e}")
 
 
 def _load_runtime() -> None:
@@ -424,10 +425,22 @@ def _lhm_fetch() -> dict:
     try:
         r = _req.get(config.LHM_URL, timeout=3)
         if r.status_code == 200:
+            try:
+                data = r.json()
+            except Exception:
+                if _LHM_ONLINE:
+                    _LHM_ONLINE = False
+                    log_warn("LHM", "SysViewHardware — réponse JSON invalide (corrompue ?)")
+                return {}
             if not _LHM_ONLINE:
                 _LHM_ONLINE = True
                 log_ok("LHM", "SysViewHardware — OK")
-            return r.json()
+            return data
+        else:
+            if _LHM_ONLINE:
+                _LHM_ONLINE = False
+                log_warn("LHM", f"SysViewHardware HTTP {r.status_code} — service en erreur ?")
+            return {}
     except Exception:
         if _LHM_ONLINE:
             _LHM_ONLINE = False
@@ -522,7 +535,7 @@ def hardware_loop():
                 # Logguer périodiquement si LHM est online mais cpu_usage absent
                 # (sensor ID manquant pour ce hardware — ID mismatch partiel).
                 # Toutes les ~5 min, aligné sur le heartbeat PERF.
-                if lhm_enabled and _LHM_ONLINE and _perf_count % 600 == 1:
+                if lhm_enabled and _LHM_ONLINE and _perf_count > 0 and _perf_count % 600 == 0:
                     log_warn(
                         "PERF",
                         "cpu_usage absent de SysViewHardware — fallback psutil actif.",
@@ -550,7 +563,7 @@ def hardware_loop():
                 })
 
             _perf_count += 1
-            if _perf_count % 600 == 0:   # log toutes les ~5 min
+            if _perf_count > 0 and _perf_count % 600 == 0:   # log toutes les ~5 min
                 with perf_lock:
                     log_info(
                         "PERF",
@@ -586,20 +599,26 @@ def _safe_disk_partitions(timeout_s: float = 5.0):
 
 def _disk_from_lhm(entry: dict) -> dict:
     """Construit une entrée DISKS depuis les données SysViewHardware (valeurs en GiB).
-    Unité fixe Go — cohérent avec le filtre C:→H: de SysViewHardware."""
+    Adapte l'unité à To si le volume dépasse 1024 GiB."""
     used_g = round(float(entry.get("used_gb",  0.0)), 2)
     tot_g  = round(float(entry.get("total_gb", 0.0)), 2)
     free_g = round(float(entry.get("free_gb",  0.0)), 2)
     pct    = round(float(entry.get("percent",  0.0)), 1)
+    # Conversion To si volume > 1024 GiB (SysViewHardware rapporte en GiB)
+    used_u = "To" if used_g >= 1024.0 else "Go"
+    tot_u  = "To" if tot_g  >= 1024.0 else "Go"
+    free_u = "To" if free_g >= 1024.0 else "Go"
+    used_d = round(used_g / 1024.0, 2) if used_u == "To" else used_g
+    tot_d  = round(tot_g  / 1024.0, 2) if tot_u  == "To" else tot_g
     return {
         "used_gb":    used_g,
         "total_gb":   tot_g,
         "free_gb":    free_g,
-        "used_unit":  "Go",
-        "total_unit": "Go",
-        "free_unit":  "Go",
+        "used_unit":  used_u,
+        "total_unit": tot_u,
+        "free_unit":  free_u,
         "percent":    pct,
-        "display":    f"{used_g:.2f}Go/{tot_g:.0f}Go",
+        "display":    f"{used_d:.2f}{used_u}/{tot_d:.0f}{tot_u}",
     }
 
 
@@ -651,7 +670,7 @@ def disk_loop():
                             "used_unit": used_u,
                             "total_unit":tot_u,
                             "free_unit": free_u,
-                            "percent":   u.percent,
+                            "percent":   round(u.percent, 1),
                             "display":   display,
                         }
                         with perf_lock:
@@ -801,7 +820,7 @@ def weather_loop():
             log_warn("WEATHER", f"Aether erreur ({_fail}) : {exc}")
 
         with runtime_lock:
-            interval_s = max(60, RUNTIME.get("weather_interval_min", 10) * 60)
+            interval_s = max(60, int(RUNTIME.get("weather_interval_min") or 10) * 60)
         delay = interval_s if ok else min(30 * (2 ** min(_fail - 1, 4)), interval_s)
         if ok:
             log_info("WEATHER", f"Prochain refresh dans {delay // 60}min")
@@ -829,7 +848,7 @@ _ext_last_post = 0.0    # timestamp du dernier POST /v1/media (extension Chrome)
 @app.get("/v1/health")
 @limiter.limit("350/minute")
 async def health(request: Request):
-    return {"status": "online", "version": "5.0"}
+    return {"status": "online", "version": "6.0"}
 
 
 @app.get("/v1/perf")
@@ -910,7 +929,9 @@ async def status(request: Request):
         if mn: return f"{mn}m {sec:02d}s"
         return f"{sec}s"
 
-    ext_age = round(now - _ext_last_post) if _ext_last_post > 0 else None
+    with media_lock:
+        _ext_last = _ext_last_post
+    ext_age = round(now - _ext_last) if _ext_last > 0 else None
 
     media_state = (
         "playing" if m.get("title") and m.get("playing") else
@@ -961,7 +982,7 @@ async def media_post(request: Request):
             _ext_last_post = now   # marquer l'extension active dès réception, même si le
                                    # POST est ignoré (priorité source) — sinon le statut
                                    # /v1/status affiche "inactive" alors que l'ext tourne
-            if new_title and new_title != old_title and old_title and not d.get("playing", False):
+            if new_title and new_title != old_title and old_title and MEDIA.get("playing", False) and not d.get("playing", False):
                 log_info(
                     "MEDIA",
                     f"POST ignoré (priorité source) : {new_title!r} écarté"
@@ -1075,7 +1096,7 @@ async def set_config(request: Request):
 # DÉMARRAGE
 # ============================================================
 
-_START_TIME = time.time()
+_START_TIME = 0.0  # valeur précise définie dans __main__ après chargement du module
 
 log_info("INIT", "=== SysView Bridge v6 ===")
 log_info("INIT", "psutil  : OK")
@@ -1085,7 +1106,7 @@ log_info("INIT", f"Port    : {config.API_PORT}")
 log_info("INIT", f"Log     : {_LOG_PATH}")
 
 if __name__ == "__main__":
-
+    _START_TIME = time.time()
     _load_runtime()
     _aether_start()
     threading.Thread(target=hardware_loop, daemon=True, name="hardware").start()
@@ -1097,7 +1118,7 @@ if __name__ == "__main__":
     try:
         uvicorn.run(
             app,
-            host="0.0.0.0",
+            host="127.0.0.1",
             port=config.API_PORT,
             log_level="warning",
             log_config=None,   # sys.stdout=None avec .pyw → formatter uvicorn crashe sans ca

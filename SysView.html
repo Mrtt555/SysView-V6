@@ -8,10 +8,10 @@ window.wallpaperPropertyListener = {
   applyUserProperties: function(p) {
     var r = document.documentElement;
     function c(x){return Math.round(parseFloat(x)*255);}
-    if (p.accent_color  !== undefined) { var v=p.accent_color.value.trim().split(' ');  r.style.setProperty('--ac', c(v[0])+','+c(v[1])+','+c(v[2])); }
-    if (p.accent2_color !== undefined) { var v=p.accent2_color.value.trim().split(' '); r.style.setProperty('--ac2',c(v[0])+','+c(v[1])+','+c(v[2])); }
-    if (p.bg_color      !== undefined) { var v=p.bg_color.value.trim().split(' ');      r.style.setProperty('--bg', c(v[0])+','+c(v[1])+','+c(v[2])); }
-    if (p.text_color    !== undefined) { var v=p.text_color.value.trim().split(' ');    r.style.setProperty('--tx', c(v[0])+','+c(v[1])+','+c(v[2])); }
+    if (p.accent_color  !== undefined) { var v=p.accent_color.value.trim().split(/\s+/);  r.style.setProperty('--ac', c(v[0])+','+c(v[1])+','+c(v[2])); }
+    if (p.accent2_color !== undefined) { var v=p.accent2_color.value.trim().split(/\s+/); r.style.setProperty('--ac2',c(v[0])+','+c(v[1])+','+c(v[2])); }
+    if (p.bg_color      !== undefined) { var v=p.bg_color.value.trim().split(/\s+/);      r.style.setProperty('--bg', c(v[0])+','+c(v[1])+','+c(v[2])); }
+    if (p.text_color    !== undefined) { var v=p.text_color.value.trim().split(/\s+/);    r.style.setProperty('--tx', c(v[0])+','+c(v[1])+','+c(v[2])); }
     if (p.panel_opacity !== undefined) {
       var pa=p.panel_opacity.value/100;
       r.style.setProperty('--pa',        pa.toFixed(2));
@@ -44,7 +44,7 @@ window.wallpaperPropertyListener = {
           /* ── Image de fond ── */
           var ov = bgEl.querySelector('video');
           if (ov) bgEl.removeChild(ov);
-          bgEl.style.backgroundImage = "url('" + bgPath + "')";
+          bgEl.style.backgroundImage = "url('" + bgPath.replace(/'/g, "%27") + "')";
         }
       } else {
         var ov = bgEl.querySelector('video');
@@ -79,10 +79,10 @@ window.wallpaperPropertyListener = {
     if (p.temp_decimal   !== undefined){ CFG.tempDecimal = !!p.temp_decimal.value; fetchWeather(); }
     if (p.time_format    !== undefined){ CFG.timeFormat = p.time_format.value; }
     if (p.network_iface  !== undefined){ CFG.netIface   = p.network_iface.value; sendWeatherConfig(); }
-    if (p.cpu_temp_hot   !== undefined) CFG.cpuHot  = parseInt(p.cpu_temp_hot.value)  || CFG.cpuHot;   /* garde NaN */
-    if (p.cpu_temp_crit  !== undefined) CFG.cpuCrit = parseInt(p.cpu_temp_crit.value) || CFG.cpuCrit;
-    if (p.gpu_temp_hot   !== undefined) CFG.gpuHot  = parseInt(p.gpu_temp_hot.value)  || CFG.gpuHot;
-    if (p.gpu_temp_crit  !== undefined) CFG.gpuCrit = parseInt(p.gpu_temp_crit.value) || CFG.gpuCrit;
+    if (p.cpu_temp_hot   !== undefined) { var _tv=parseInt(p.cpu_temp_hot.value);   if(!isNaN(_tv)) CFG.cpuHot  = _tv; }
+    if (p.cpu_temp_crit  !== undefined) { var _tv=parseInt(p.cpu_temp_crit.value);  if(!isNaN(_tv)) CFG.cpuCrit = _tv; }
+    if (p.gpu_temp_hot   !== undefined) { var _tv=parseInt(p.gpu_temp_hot.value);   if(!isNaN(_tv)) CFG.gpuHot  = _tv; }
+    if (p.gpu_temp_crit  !== undefined) { var _tv=parseInt(p.gpu_temp_crit.value);  if(!isNaN(_tv)) CFG.gpuCrit = _tv; }
     if (p.weather_interval !== undefined){ CFG.weatherInterval = Math.max(1, Math.min(15, parseInt(p.weather_interval.value)||10)); sendWeatherConfig(); }
     if (p.show_disk_free   !== undefined) CFG.showDiskFree = !!p.show_disk_free.value;
   }
@@ -205,11 +205,12 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:rgb(var(--bg));c
   margin-left:auto;
   margin-right:auto;
 }
-.pp-none {color:rgba(var(--tx),.3);}
+.pp-none  {color:rgba(var(--tx),.3);}
 .pp-low   {color:rgba(100,220,120,.95);}
 .pp-mod   {color:rgba(255,200,60,.95);}
 .pp-high  {color:rgba(255,120,40,.95);}
 .pp-vhigh {color:rgba(255,60,60,.95);}
+.pp-crit  {color:rgba(200,30,30,.95);}
 .wstat{background:rgba(var(--ac),var(--pa-card));border:1px solid rgba(var(--ac),.65);border-radius:calc(8px*var(--sz));padding:calc(12px*var(--sz)) calc(14px*var(--sz));text-align:center;box-shadow:0 0 10px rgba(var(--ac),0.15),inset 0 1px 0 rgba(var(--ac2),.25);}
 .wslabel{font-size:calc(13px*var(--sz));color:rgba(var(--ac2),.9);letter-spacing:calc(2px*var(--sz));margin-bottom:calc(5px*var(--sz));font-weight:bold;}
 .wsval{font-size:calc(26px*var(--sz));font-weight:bold;color:#fff;}
@@ -592,7 +593,7 @@ function updateDisk(letter, info){
   var bar   = document.getElementById('disk-'+letter+'-bar');
   var uEl   = document.getElementById('disk-'+letter+'-used');
   var tEl   = document.getElementById('disk-'+letter+'-total');
-  var unitEl = uEl ? uEl.nextElementSibling : null;
+  var unitEl = uEl ? uEl.parentElement.querySelector('.memunit') : null;
   if(bar) bar.style.width=pct+'%';
   if(uEl) uEl.textContent = usedTiB ? used.toFixed(2) : used.toFixed(1);
   if(unitEl && unitEl.className==='memunit') unitEl.textContent = usedTiB ? ' '+T('tb') : ' '+T('gb');
@@ -620,8 +621,8 @@ function renderHW(){
      Réseau à 0.97 → quasi-instantané (0.5s). */
   S.cpu =ema(S.cpu, HW.cpu,      0.60,0.60);
   S.gpu =ema(S.gpu, HW.gpu,      0.60,0.60);
-  S.ct  =ema(S.ct,  HW.cpuTemp!==null?HW.cpuTemp:(S.ct<0?0:S.ct), 0.60,0.60);
-  S.gt  =ema(S.gt,  HW.gpuTemp!==null?HW.gpuTemp:(S.gt<0?0:S.gt), 0.60,0.60);
+  if (HW.cpuTemp !== null) S.ct = ema(S.ct<0?HW.cpuTemp:S.ct, HW.cpuTemp, 0.60,0.60); else S.ct=-1;
+  if (HW.gpuTemp !== null) S.gt = ema(S.gt<0?HW.gpuTemp:S.gt, HW.gpuTemp, 0.60,0.60); else S.gt=-1;
   S.ram =ema(S.ram, HW.ramUsed,  0.60,0.60);
   S.vram=ema(S.vram,HW.vramUsed, 0.60,0.60);
   S.dl  =ema(S.dl,  HW.dlKb,    0.97,0.97);
@@ -632,7 +633,7 @@ function renderHW(){
   document.getElementById('gpu-bar').style.width=gp+'%';
   document.getElementById('ram-bar').style.width=rp+'%';
   document.getElementById('vram-bar').style.width=vp+'%';
-  var ct=S.ct>0?S.ct:null, gt=S.gt>0?S.gt:null;
+  var ct=S.ct>=0?S.ct:null, gt=S.gt>=0?S.gt:null; /* B-21 : 0 °C est valide */
   var tu=fmtTempUnit();
   set('cpu-temp',ct?fmtTemp(ct,true)+tu:'—'+tu,'stat-temp '+tempCls(ct,cp,CFG.cpuHot,CFG.cpuCrit));
   set('cpu-pct', cp+'%',                       'stat-pct ' +loadCls(cp));
@@ -661,8 +662,8 @@ function fmtTemp(c,forceInt){
 }
 function fmtTempUnit(){return CFG.tempUnit==='f' ? '°F' : '°C';}
 function fmtNet(kb){
-  if(kb>=1048576) return (kb/1048576).toFixed(1)+' <span class="netunit">'+T('gbs')+'</span>';
-  if(kb>=1024)    return (kb/1024).toFixed(1)   +' <span class="netunit">'+T('mbs')+'</span>';
+  if(kb>=1000000) return (kb/1000000).toFixed(1)+' <span class="netunit">'+T('gbs')+'</span>';
+  if(kb>=1000)    return (kb/1000).toFixed(1)   +' <span class="netunit">'+T('mbs')+'</span>';
   return Math.round(kb)+' <span class="netunit">'+T('kbs')+'</span>';
 }
 
@@ -696,7 +697,7 @@ async function pollHWAPI(){
   try{
     var r=await fetch(API+'/perf',{signal:ac.signal});
     clearTimeout(tid);
-    if(!r.ok)return;
+    if(!r.ok){ console.warn('[SysView] Bridge HTTP '+r.status); return; }
     var d=await r.json();
     var disks=d.disks||{};
     ['c','d','e','f','g','h'].forEach(function(l){ if(disks[l]) updateDisk(l,disks[l]); });
@@ -762,13 +763,25 @@ setInterval(updateClock,1000); updateClock(); renderLoc(); applyLang(); sendWeat
 /* ── MÉTÉO ── */
 var WMO={
   fr:{0:'Ciel dégagé',1:'Ciel dégagé',2:'Partiellement nuageux',3:'Nuageux',
-      45:'Brouillard',48:'Brouillard givrant',51:'Bruine légère',53:'Bruine',55:'Bruine forte',
-      61:'Pluie légère',63:'Pluie',65:'Pluie forte',71:'Neige légère',73:'Neige',75:'Neige forte',
-      80:'Averses légères',81:'Averses',82:'Averses fortes',95:'Orage',96:'Orage+grêle',99:'Orage+grêle'},
+      45:'Brouillard',48:'Brouillard givrant',
+      51:'Bruine légère',53:'Bruine',55:'Bruine forte',
+      56:'Bruine verglaçante légère',57:'Bruine verglaçante forte',
+      61:'Pluie légère',63:'Pluie',65:'Pluie forte',
+      66:'Pluie verglaçante légère',67:'Pluie verglaçante forte',
+      71:'Neige légère',73:'Neige',75:'Neige forte',77:'Grains de neige',
+      80:'Averses légères',81:'Averses',82:'Averses fortes',
+      85:'Averses de neige légères',86:'Averses de neige fortes',
+      95:'Orage',96:'Orage+grêle',99:'Orage+grêle'},
   en:{0:'Clear sky',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',
-      45:'Fog',48:'Icy fog',51:'Light drizzle',53:'Drizzle',55:'Heavy drizzle',
-      61:'Light rain',63:'Rain',65:'Heavy rain',71:'Light snow',73:'Snow',75:'Heavy snow',
-      80:'Light showers',81:'Showers',82:'Heavy showers',95:'Thunderstorm',96:'Thunderstorm+hail',99:'Thunderstorm+hail'}
+      45:'Fog',48:'Icy fog',
+      51:'Light drizzle',53:'Drizzle',55:'Heavy drizzle',
+      56:'Light freezing drizzle',57:'Heavy freezing drizzle',
+      61:'Light rain',63:'Rain',65:'Heavy rain',
+      66:'Light freezing rain',67:'Heavy freezing rain',
+      71:'Light snow',73:'Snow',75:'Heavy snow',77:'Snow grains',
+      80:'Light showers',81:'Showers',82:'Heavy showers',
+      85:'Light snow showers',86:'Heavy snow showers',
+      95:'Thunderstorm',96:'Thunderstorm+hail',99:'Thunderstorm+hail'}
 };
 function wmoLabel(code){ return (WMO[CFG.lang]||WMO.fr)[code] || (CFG.lang==='en'?'Unknown':'Inconnu'); }
 function wSVG(c){c=parseInt(c);
@@ -776,6 +789,8 @@ function wSVG(c){c=parseInt(c);
   if(c<=1)return'<svg viewBox="0 0 60 60" fill="none" '+s+'><circle cx="30" cy="30" r="13" fill="#FFD700" opacity=".9"/><g stroke="#FFD700" stroke-width="2.5" stroke-linecap="round" opacity=".6"><line x1="30" y1="5" x2="30" y2="11"/><line x1="30" y1="49" x2="30" y2="55"/><line x1="5" y1="30" x2="11" y2="30"/><line x1="49" y1="30" x2="55" y2="30"/><line x1="11" y1="11" x2="15" y2="15"/><line x1="45" y1="45" x2="49" y2="49"/><line x1="11" y1="49" x2="15" y2="45"/><line x1="45" y1="15" x2="49" y2="11"/></g></svg>';
   if(c===2)return'<svg viewBox="0 0 60 60" fill="none" '+s+'><circle cx="21" cy="25" r="10" fill="#FFD700" opacity=".8"/><rect x="8" y="30" width="38" height="14" rx="7" fill="#7090a8" opacity=".85"/><rect x="15" y="22" width="27" height="14" rx="7" fill="#90afc0" opacity=".9"/></svg>';
   if(c===3)return'<svg viewBox="0 0 60 60" fill="none" '+s+'><rect x="7" y="28" width="42" height="16" rx="8" fill="#607888" opacity=".85"/><rect x="14" y="20" width="30" height="16" rx="8" fill="#7898a8" opacity=".9"/><rect x="21" y="12" width="20" height="13" rx="6" fill="#90aabc" opacity=".8"/></svg>';
+  /* B-25 : brouillard (codes 45, 48) — lignes horizontales estompées */
+  if(c===45||c===48)return'<svg viewBox="0 0 60 60" fill="none" '+s+'><g stroke="#a0b8c8" stroke-width="2.5" stroke-linecap="round" opacity=".75"><line x1="10" y1="20" x2="50" y2="20"/><line x1="6"  y1="30" x2="54" y2="30"/><line x1="10" y1="40" x2="50" y2="40"/></g></svg>';
   if(c>=51&&c<=67)return'<svg viewBox="0 0 60 60" fill="none" '+s+'><rect x="8" y="10" width="42" height="18" rx="9" fill="#607888" opacity=".85"/><g stroke="#7070ff" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="32" x2="13" y2="48"/><line x1="30" y1="32" x2="25" y2="48"/><line x1="42" y1="32" x2="37" y2="48"/></g></svg>';
   if(c>=71&&c<=77)return'<svg viewBox="0 0 60 60" fill="none" '+s+'><rect x="8" y="10" width="42" height="16" rx="8" fill="#607888" opacity=".8"/><g fill="#c0d8ff" opacity=".85"><circle cx="18" cy="38" r="5"/><circle cx="30" cy="42" r="5"/><circle cx="42" cy="38" r="5"/></g></svg>';
   if(c>=80&&c<=86)return'<svg viewBox="0 0 60 60" fill="none" '+s+'><rect x="7" y="8" width="42" height="18" rx="9" fill="#485860" opacity=".9"/><g stroke="#7070ff" stroke-width="2.5" stroke-linecap="round"><line x1="16" y1="30" x2="11" y2="48"/><line x1="25" y1="30" x2="20" y2="48"/><line x1="34" y1="30" x2="29" y2="48"/><line x1="43" y1="30" x2="38" y2="48"/></g></svg>';
@@ -814,12 +829,14 @@ function pollenLabel(v, lang){
   return 'Très élevé';
 }
 function aqiClass(v){
+  /* B-26 : European AQI 0-100 — 5 niveaux distincts dont pp-crit pour >80 */
   if(v===null||v===undefined||isNaN(+v)) return 'pp-none';
   var i=+v;
   if(i<=20)  return 'pp-low';
   if(i<=40)  return 'pp-mod';
   if(i<=60)  return 'pp-high';
-  return 'pp-vhigh';
+  if(i<=80)  return 'pp-vhigh';
+  return 'pp-crit';
 }
 function aqiLabel(v, lang){
   if(v===null||v===undefined||isNaN(+v)) return '—';
@@ -870,6 +887,11 @@ function _sendCityConfig(){
   }, 500);
 }
 var _weatherTimer = null;
+/* B-28 : déclaré avant fetchWeather — sinon var-hoisting → undefined au 1er appel,
+   undefined++ = NaN, NaN <= 5 = false → premier retry AQI attend le délai complet */
+var _weatherAqiRetries = 0;
+/* B-29 : compteur pour la boucle infinie de retry om_temp===null */
+var _weatherTempRetries = 0;
 async function fetchWeather(){
   clearTimeout(_weatherTimer); _weatherTimer = null;
   var ac=new AbortController(); var tid=setTimeout(function(){ac.abort();},5000);
@@ -879,9 +901,12 @@ async function fetchWeather(){
     if(!r.ok) throw new Error('HTTP '+r.status);
     var d=await r.json();
     if(d.om_temp === null || d.om_temp === undefined){
-      _weatherTimer = setTimeout(fetchWeather, 3000);
+      /* B-29 : limite à 10 retries (30s) pour éviter la boucle infinie */
+      _weatherTempRetries++;
+      _weatherTimer = setTimeout(fetchWeather, _weatherTempRetries <= 10 ? 3000 : (CFG.weatherInterval||10)*60*1000);
       return;
     }
+    _weatherTempRetries = 0;
     var code = d.om_weather_code || 0;
     var temp = fmtTemp(d.om_temp);
     var prec = (d.om_precip_prob !== null && d.om_precip_prob !== undefined) ? d.om_precip_prob : '—';
@@ -894,7 +919,7 @@ async function fetchWeather(){
     var aCls   = aqiClass(aqiVal);
     var pCls   = pollenClass(polVal);
     var aVal   = (aqiVal!==null&&aqiVal!==undefined) ? Math.round(aqiVal) : '—';
-    var pVal   = (polVal!==null&&polVal!==undefined&&+polVal>0) ? (+polVal).toFixed(1) : '—';
+    var pVal   = (polVal!==null&&polVal!==undefined&&!isNaN(+polVal)) ? (+polVal).toFixed(1) : '—'; /* B-27 : 0 grains/m³ est une valeur valide (pas "—") */
     /* Unité affichée sous le chiffre — uniquement si valeur disponible */
     var pValSmall = pVal !== '—' ? pVal+' grains/m³' : '—';
 
@@ -913,7 +938,7 @@ async function fetchWeather(){
           '<div class="waircard-lbl '+aCls+'">'+aqiLbl+'</div>'+
         '</div>'+
       '</div>'+
-      '<div class="wsource">Open-Meteo</div>';
+      '<div class="wsource">'+(d.aether_model||'Open-Meteo')+'</div>'; /* B-30 : modèle réel renvoyé par le bridge */
 
     document.getElementById('weather-content').innerHTML=
       '<div class="wmain"><div class="wicon">'+wSVG(code)+'</div>'+
@@ -941,7 +966,6 @@ async function fetchWeather(){
 }
 /* ── MEDIA ── */
 var BRIDGE_OK=false, lastTitle='', lastThumb='';
-var _weatherAqiRetries=0; /* compteur de retries AQI/pollen — évite la boucle 5s infinie si l'API est durablement indisponible */
 var demoM=[{title:'Midnight City',artist:'M83',total:243},{title:'Neon Lights',artist:'Kraftwerk',total:382},{title:'Digital Love',artist:'Daft Punk',total:298}];
 var demoIdx=0, demoEl=0;
 
@@ -1063,7 +1087,7 @@ async function pollMediaBridge(){
     if(d.duration>0){
       MEDIA.total=d.duration; MEDIA.elapsed=d.position;
       /* snap=true sur changement de titre : saut instantané sans transition */
-      renderMediaProgress(titleChanged ? true : false);
+      renderMediaProgress(titleChanged); /* B-31 : ternaire inutile */
     } else if(titleChanged){
       /* Stream / durée inconnue au premier frame → remettre la barre à zéro */
       MEDIA.elapsed=0; MEDIA.total=0;

@@ -35,8 +35,9 @@ if not defined _BASE set "_BASE=%_DEFAULT%"
 if "!_BASE:~-1!"=="\" set "_BASE=!_BASE:~0,-1!"
 
 set "_DEST=!_BASE!\SysView V6"
-set "_APIV3=!_DEST!\API V3"
-set "_AETHER=!_APIV3!\aether"
+set "_API=!_DEST!\API"
+set "_AETHER=!_DEST!\Aether"
+set "_HW_DIR=!_DEST!\SysViewHardware"
 
 echo.
 echo  >>> SysView V6 : !_DEST!
@@ -59,36 +60,36 @@ if exist "!_DEST!\" (
     echo  Les fichiers seront mis a jour (aether et config conserves).
     echo.
     set /p "_OK=  Continuer ? (O / N) : "
-    if /i not "!_OK!"=="O" (
+    if /i "!_OK:~0,1!" NEQ "O" (  :: B-43 : accepte "Oui", "ok", etc.
         echo Installation annulee.
         pause ^& exit /b 0
     )
     echo.
 )
 
-:: 1/6 � SysView V6 (GitHub)
+:: 1/6 -- SysView V6 (GitHub)
 :: =========================================================
 echo [1/6] Telechargement de SysView V6 depuis GitHub...
 echo ---------------------------------------------------------
 set "_ZIP=%TEMP%\sysview_setup.zip"
 set "_TMP=%TEMP%\sysview_setup_tmp"
 
-if exist "%_TMP%" powershell -NoProfile -Command "Remove-Item '%_TMP%' -Recurse -Force -ErrorAction SilentlyContinue"
-if exist "%_ZIP%" del "%_ZIP%" >nul 2>&1
+if exist "!_TMP!" powershell -NoProfile -Command "Remove-Item '!_TMP!' -Recurse -Force -ErrorAction SilentlyContinue"
+if exist "!_ZIP!" del "!_ZIP!" >nul 2>&1
 
 echo  Connexion a GitHub...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest 'https://github.com/Mrtt555/sysview-wallpaper-engine/archive/refs/heads/main.zip' -OutFile '%_ZIP%' -UseBasicParsing -ErrorAction Stop"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest 'https://github.com/Mrtt555/SysView-V6/archive/refs/heads/master.zip' -OutFile '!_ZIP!' -UseBasicParsing -ErrorAction Stop"
 if errorlevel 1 (
     echo [ERREUR] Telechargement echoue. Verifiez votre connexion.
     pause & exit /b 1
 )
 echo  Extraction...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive '%_ZIP%' -DestinationPath '%_TMP%' -Force"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive '!_ZIP!' -DestinationPath '!_TMP!' -Force"
 if errorlevel 1 (
     echo [ERREUR] Extraction echouee.
     pause & exit /b 1
 )
-del "%_ZIP%" >nul 2>&1
+del "!_ZIP!" >nul 2>&1
 
 set "_SRC="
 for /d %%D in ("%_TMP%\*") do if not defined _SRC set "_SRC=%%D"
@@ -97,15 +98,15 @@ if not defined _SRC (
     pause & exit /b 1
 )
 
-:: Sauvegarder aether\ et runtime_config.json
+:: Sauvegarder Aether\ et API\runtime_config.json
 set "_BCK=%TEMP%\sysview_bck"
-if exist "%_BCK%" powershell -NoProfile -Command "Remove-Item '%_BCK%' -Recurse -Force -ErrorAction SilentlyContinue"
-mkdir "%_BCK%" >nul 2>&1
+if exist "!_BCK!" powershell -NoProfile -Command "Remove-Item '!_BCK!' -Recurse -Force -ErrorAction SilentlyContinue"
+mkdir "!_BCK!" >nul 2>&1
 if exist "!_AETHER!\" (
     echo  Sauvegarde d'Aether...
-    powershell -NoProfile -Command "Copy-Item '!_AETHER!' '%_BCK%\aether' -Recurse -Force"
+    powershell -NoProfile -Command "Copy-Item '!_AETHER!' '!_BCK!\Aether' -Recurse -Force"
 )
-if exist "!_APIV3!\runtime_config.json" copy /y "!_APIV3!\runtime_config.json" "%_BCK%\runtime_config.json" >nul 2>&1
+if exist "!_API!\runtime_config.json" copy /y "!_API!\runtime_config.json" "!_BCK!\runtime_config.json" >nul 2>&1
 
 :: Remplacer / installer
 if exist "!_DEST!\" powershell -NoProfile -Command "Remove-Item '!_DEST!' -Recurse -Force"
@@ -114,12 +115,12 @@ if not exist "!_DEST!\SysView.html" (
     echo [ERREUR] SysView.html introuvable apres extraction.
     pause & exit /b 1
 )
-powershell -NoProfile -Command "Remove-Item '%_TMP%' -Recurse -Force -ErrorAction SilentlyContinue"
+powershell -NoProfile -Command "Remove-Item '!_TMP!' -Recurse -Force -ErrorAction SilentlyContinue"
 
-:: Restaurer aether\ et runtime_config.json
-if exist "%_BCK%\aether\" powershell -NoProfile -Command "Copy-Item '%_BCK%\aether' '!_AETHER!' -Recurse -Force"
-if exist "%_BCK%\runtime_config.json" copy /y "%_BCK%\runtime_config.json" "!_APIV3!\runtime_config.json" >nul 2>&1
-powershell -NoProfile -Command "Remove-Item '%_BCK%' -Recurse -Force -ErrorAction SilentlyContinue"
+:: Restaurer Aether\ et runtime_config.json
+if exist "!_BCK!\Aether\" powershell -NoProfile -Command "Copy-Item '!_BCK!\Aether' '!_AETHER!' -Recurse -Force"
+if exist "!_BCK!\runtime_config.json" copy /y "!_BCK!\runtime_config.json" "!_API!\runtime_config.json" >nul 2>&1
+powershell -NoProfile -Command "Remove-Item '!_BCK!' -Recurse -Force -ErrorAction SilentlyContinue"
 
 echo [OK] SysView V6 installe : !_DEST!
 echo.
@@ -131,8 +132,8 @@ echo.
 echo [2/6] Compilation de SysViewHardware...
 echo ---------------------------------------------------------
 
-set "_HW_EXE=!_APIV3!\SysViewHardware.exe"
-set "_HW_PROJ=!_APIV3!\SysViewHardware\SysViewHardware.csproj"
+set "_HW_EXE=!_HW_DIR!\bin\Release\net8.0-windows\win-x64\publish\SysViewHardware.exe"
+set "_HW_PROJ=!_HW_DIR!\SysViewHardware.csproj"
 
 if exist "!_HW_EXE!" (
     echo [INFO] SysViewHardware.exe deja present -- compilation ignoree.
@@ -145,7 +146,7 @@ for /f "tokens=*" %%D in ('where dotnet 2^>nul') do if not defined _DOTNET set "
 
 if defined _DOTNET (
     set "_SDK_OK=0"
-    for /f "tokens=1 delims=." %%V in ('dotnet --version 2^>nul') do if %%V GEQ 8 set "_SDK_OK=1"
+    for /f "tokens=1 delims=." %%V in ('dotnet --version 2^>nul') do (set /a "_SDKVER=%%V" >nul & if !_SDKVER! GEQ 8 set "_SDK_OK=1")  :: B-44 : comparaison numerique (evite "10"<"8" en tri lexical)
     if not "!_SDK_OK!"=="1" set "_DOTNET="
 )
 
@@ -160,8 +161,13 @@ if not defined _DOTNET (
     set "_DOTNET=%USERPROFILE%\.dotnet\dotnet.exe"
 )
 
+if not exist "!_HW_PROJ!" (
+    echo [ERREUR] Projet introuvable : !_HW_PROJ!
+    goto :fail
+)
+
 echo  Compilation en cours ^(premiere fois ~2-3 min -- NuGet + build^)...
-"!_DOTNET!" publish "!_HW_PROJ!" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o "!_APIV3!" --nologo -v quiet
+"!_DOTNET!" publish "!_HW_PROJ!" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none --nologo -v quiet
 if errorlevel 1 (
     echo [ERREUR] Compilation SysViewHardware echouee.
     echo  Verifiez que le projet est intact : !_HW_PROJ!
@@ -172,7 +178,7 @@ if not exist "!_HW_EXE!" (
     echo [ERREUR] SysViewHardware.exe introuvable apres compilation.
     pause ^& exit /b 1
 )
-echo [OK] SysViewHardware.exe compile ^(~50 Mo, autonome^).
+echo [OK] SysViewHardware.exe compile ^(autonome^).
 
 :hw_startup
 :: --- Demarrage automatique avec privileges admin via Task Scheduler ---
@@ -198,14 +204,14 @@ powershell -NoProfile -Command "Start-Process '!_HW_EXE!' -Verb RunAs"
 echo [OK] SysViewHardware lance ^(port 8086^).
 echo.
 
-:: 3/6 � PYTHON
+:: 3/6 -- PYTHON
 :: =========================================================
 echo [3/6] Verification de Python...
 echo ---------------------------------------------------------
 python --version >nul 2>&1
 if not errorlevel 1 goto :have_python
 
-echo  Python introuvable � telechargement automatique...
+echo  Python introuvable -- telechargement automatique...
 echo  (quelques minutes selon votre connexion)
 powershell -NoProfile -ExecutionPolicy Bypass -Command "& { $r=(Invoke-WebRequest 'https://www.python.org/downloads/' -UseBasicParsing).Content; $v=([regex]'Download Python (\d+\.\d+\.\d+)').Match($r).Groups[1].Value; if(!$v){throw 'Version introuvable'}; Write-Host('  -> Python '+$v); $f=$env:TEMP+'\pysetup.exe'; Invoke-WebRequest('https://www.python.org/ftp/python/'+$v+'/python-'+$v+'-amd64.exe') -OutFile $f -UseBasicParsing; Start-Process -Wait $f '/quiet InstallAllUsers=0 PrependPath=1 Include_test=0'; Remove-Item $f -ErrorAction SilentlyContinue }"
 if errorlevel 1 (
@@ -236,19 +242,19 @@ echo [INFO] Pythonw : !_PYW!
 echo.
 
 :: =========================================================
-:: 4/6 � PAQUETS PYTHON (BRIDGE)
+:: 4/6 -- PAQUETS PYTHON (BRIDGE + AETHER)
 :: =========================================================
-echo [4/6] Installation des paquets Python (bridge)...
+echo [4/6] Installation des paquets Python (bridge + Aether)...
 echo ---------------------------------------------------------
 echo  Mise a jour de pip...
 "!_PY!" -m pip install --upgrade --quiet pip
-echo  Installation des paquets du bridge...
-"!_PY!" -m pip install --quiet fastapi "uvicorn[standard]" requests psutil slowapi
+echo  Installation des paquets...
+"!_PY!" -m pip install --quiet fastapi "uvicorn[standard]" requests psutil slowapi httpx python-multipart "pydantic>=2.7.0"
 if errorlevel 1 (
     echo [ERREUR] pip install a echoue.
     pause & exit /b 1
 )
-"!_PY!" -c "import fastapi, uvicorn, requests, psutil, slowapi; print('[OK] fastapi uvicorn requests psutil slowapi � OK')"
+"!_PY!" -c "import fastapi, uvicorn, requests, psutil, slowapi, httpx, pydantic; print('[OK] fastapi uvicorn requests psutil slowapi httpx pydantic -- OK')"
 if errorlevel 1 (
     echo [ERREUR] Verification des paquets echouee.
     pause & exit /b 1
@@ -256,7 +262,7 @@ if errorlevel 1 (
 echo.
 
 :: =========================================================
-:: 5/6 � AETHER (proxy Open-Meteo)
+:: 5/6 -- AETHER (proxy Open-Meteo)
 :: =========================================================
 echo [5/6] Installation d'Aether (proxy Open-Meteo)...
 echo ---------------------------------------------------------
@@ -269,25 +275,25 @@ if not exist "!_AETHER!\main.py" (
         echo [ERREUR] Telechargement Aether echoue.
         pause & exit /b 1
     )
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive '%_AZ%' -DestinationPath '%_AT%' -Force; Move-Item '%_AT%\Aether-main' '!_AETHER!'; Remove-Item '%_AZ%','%_AT%' -Recurse -Force -ErrorAction SilentlyContinue"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive '%_AZ%' -DestinationPath '%_AT%' -Force; $sub=(Get-ChildItem '%_AT%' -Directory | Select-Object -First 1).FullName; Move-Item $sub '!_AETHER!'; Remove-Item '%_AZ%','%_AT%' -Recurse -Force -ErrorAction SilentlyContinue"
     if not exist "!_AETHER!\main.py" (
-        echo [ERREUR] Installation Aether echouee � main.py introuvable.
+        echo [ERREUR] Installation Aether echouee -- main.py introuvable.
         pause & exit /b 1
     )
     echo [OK] Aether telecharge.
 ) else (
-    echo [INFO] Aether deja present � paquets mis a jour uniquement.
+    echo [INFO] Aether deja present -- paquets mis a jour uniquement.
 )
 "!_PY!" -m pip install --quiet -r "!_AETHER!\requirements.txt"
 if errorlevel 1 (
     echo [ERREUR] Paquets Aether echec.
     pause & exit /b 1
 )
-echo [OK] Aether pret � interface sur http://127.0.0.1:8001
+echo [OK] Aether pret -- interface sur http://127.0.0.1:8001
 echo.
 
 :: =========================================================
-:: 6/6 � DEMARRAGE AUTOMATIQUE + LANCEMENT BRIDGE
+:: 6/6 -- DEMARRAGE AUTOMATIQUE + LANCEMENT BRIDGE
 :: =========================================================
 echo [6/6] Demarrage automatique + lancement bridge...
 echo ---------------------------------------------------------
@@ -295,7 +301,7 @@ echo ---------------------------------------------------------
 :: Raccourci Startup Windows pour le bridge
 set "_SHORTCUT=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\SysViewBridge.bat"
 >"!_SHORTCUT!" echo @echo off
->>"!_SHORTCUT!" echo start "" "!_PYW!" "!_APIV3!\SysViewBridge.pyw"
+>>"!_SHORTCUT!" echo start "" "!_PYW!" "!_API!\SysViewBridge.pyw"
 if exist "!_SHORTCUT!" (
     echo [OK] Bridge : demarrage automatique au login Windows configure.
 ) else (
@@ -307,20 +313,20 @@ echo.
 echo  Verification des ports 5001 et 8001...
 set "_PORT_BUSY=0"
 
-if exist "!_APIV3!\bridge.pid" (
-    for /f "usebackq tokens=*" %%i in ("!_APIV3!\bridge.pid") do taskkill /PID %%i /F /T >nul 2>&1
-    del "!_APIV3!\bridge.pid" >nul 2>&1
+if exist "!_API!\bridge.pid" (
+    for /f "usebackq tokens=*" %%i in ("!_API!\bridge.pid") do taskkill /PID %%i /F /T >nul 2>&1
+    del "!_API!\bridge.pid" >nul 2>&1
 )
-for /f "tokens=5" %%P in ('netstat -ano 2^>nul ^| findstr /r " 0\.0\.0\.0:5001 \|127\.0\.0\.1:5001 " ^| findstr "LISTENING"') do (
+for /f "tokens=5" %%P in ('netstat -ano 2^>nul ^| findstr ":5001 " ^| findstr "LISTENING"') do (
     if not "%%P"=="0" (
-        echo [INFO] port 5001 occupe ^(PID %%P^) � arret...
+        echo [INFO] port 5001 occupe ^(PID %%P^) -- arret...
         taskkill /PID %%P /F /T >nul 2>&1
         set "_PORT_BUSY=1"
     )
 )
-for /f "tokens=5" %%P in ('netstat -ano 2^>nul ^| findstr /r " 0\.0\.0\.0:8001 \|127\.0\.0\.1:8001 " ^| findstr "LISTENING"') do (
+for /f "tokens=5" %%P in ('netstat -ano 2^>nul ^| findstr ":8001 " ^| findstr "LISTENING"') do (
     if not "%%P"=="0" (
-        echo [INFO] port 8001 occupe ^(PID %%P^) � arret...
+        echo [INFO] port 8001 occupe ^(PID %%P^) -- arret...
         taskkill /PID %%P /F /T >nul 2>&1
         set "_PORT_BUSY=1"
     )
@@ -335,20 +341,20 @@ echo.
 
 :: Lancer le bridge (demarre Aether en sous-processus)
 echo  Lancement du bridge + Aether...
-start "" "!_PYW!" "!_APIV3!\SysViewBridge.pyw"
+start "" "!_PYW!" "!_API!\SysViewBridge.pyw"
 
 echo  Attente du demarrage...
 set "_WAIT=0"
 :wait_loop
 ping -n 3 127.0.0.1 >nul
 set /a "_WAIT=!_WAIT!+3"
-if exist "!_APIV3!\bridge.pid" goto :started
+if exist "!_API!\bridge.pid" goto :started
 if !_WAIT! geq 15 goto :timeout
 goto :wait_loop
 
 :timeout
 echo [AVERT] Bridge non detecte.
-echo  Verifiez : !_APIV3!\logs\sysview.log
+echo  Verifiez : !_API!\logs\sysview.log
 goto :launch_done
 
 :started
@@ -382,10 +388,12 @@ echo   Tout est installe et en cours d'execution !
 echo  =========================================================
 echo.
 echo  Dossiers installes :
-echo    SysView V6  : !_DEST!
-echo    SysViewHardware : !_APIV3!\SysViewHardware.exe
+echo    SysView V6      : !_DEST!
+echo    Bridge          : !_API!\SysViewBridge.pyw
+echo    Aether          : !_AETHER!
+echo    SysViewHardware : !_HW_EXE!
 echo.
-echo  PROCHAINE ETAPE � Ouvrez Wallpaper Engine :
+echo  PROCHAINE ETAPE -- Ouvrez Wallpaper Engine :
 echo    - En bas de la bibliotheque : "Parcourir"
 echo    - Selectionnez : !_DEST!\SysView.html
 echo    - Dans Personnaliser : entrez votre ville
@@ -402,3 +410,9 @@ echo    - SysViewHardware : tache planifiee (avec droits admin)
 echo.
 endlocal
 pause
+
+:fail
+echo.
+endlocal
+pause
+exit /b 1

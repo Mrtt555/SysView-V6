@@ -59,9 +59,10 @@ class Program
     const int    POLL_MS = 1000;
     static readonly CultureInfo IC = CultureInfo.InvariantCulture;
 
-    static Snap           _snap = new();
-    static readonly object _mu  = new();
+    static Snap           _snap   = new();
+    static readonly object _mu   = new();
     static readonly Updater _vis = new();
+    static volatile bool   _running = true;
 
     static void Main()
     {
@@ -87,7 +88,7 @@ class Program
 
         var t = new Thread(() =>
         {
-            for (;;) { Thread.Sleep(POLL_MS); Poll(hw); }
+            while (_running) { Thread.Sleep(POLL_MS); if (_running) Poll(hw); }
         })
         { IsBackground = true, Name = "hw-poll" };
         t.Start();
@@ -96,9 +97,17 @@ class Program
         lis.Prefixes.Add($"http://127.0.0.1:{PORT}/");
 
         try { lis.Start(); }
-        catch { hw.Close(); Environment.Exit(1); }
+        catch (Exception ex)
+        {
+            try { File.WriteAllText(
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "hw_error.log"),
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] HttpListener.Start() échoué (port {PORT} déjà occupé ?):\n{ex}\n"); }
+            catch { }
+            hw.Close();
+            Environment.Exit(1);
+        }
 
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => { hw.Close(); lis.Stop(); };
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => { _running = false; Thread.Sleep(50); hw.Close(); lis.Stop(); };
 
         while (lis.IsListening)
         {
@@ -158,7 +167,16 @@ class Program
                     case HardwareType.GpuNvidia:
                     case HardwareType.GpuIntel:
                     {
-                        if (s.gpu_name != null) break;
+                        // Préférer GPU discret (AMD/NVIDIA) à iGPU (Intel) :
+                        // si un GPU est déjà enregistré ET le nouveau est discret → écraser l'iGPU
+                        bool isDiscrete = h.HardwareType != HardwareType.GpuIntel;
+                        if (s.gpu_name != null && !isDiscrete) break;  // iGPU ignoré si GPU déjà présent
+                        // Si l'ancien était un iGPU et qu'on trouve un GPU discret → reset des capteurs
+                        if (s.gpu_name != null)
+                        {
+                            s.gpu_temp = null; s.gpu_usage = null;
+                            s.vram_used = null; s.vram_total = null;
+                        }
                         s.gpu_name = h.Name;
                         var gl = Flat(h).ToList();
 
@@ -205,9 +223,9 @@ class Program
                                                  && !n.Contains("virtual")) ramAvail = x.Value;
                         }
 
-                        if (ramUsed != null) s.ram_used_mb = (int)(ramUsed.Value * 1024f);
+                        if (ramUsed != null) s.ram_used_mb = (int)MathF.Round(ramUsed.Value * 1024f);
                         if (ramUsed != null && ramAvail != null)
-                            s.ram_total_mb = (int)((ramUsed.Value + ramAvail.Value) * 1024f);
+                            s.ram_total_mb = (int)MathF.Round((ramUsed.Value + ramAvail.Value) * 1024f);
 
                         // Fallback : calcule % depuis les valeurs absolues si Load manquant
                         if (s.ram_usage == null && s.ram_total_mb > 0)
@@ -274,7 +292,13 @@ class Program
 
             lock (_mu) _snap = s;
         }
-        catch { }
+        catch (Exception ex)
+        {
+            try { File.AppendAllText(
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "hw_error.log"),
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Poll() error:\n{ex}\n"); }
+            catch { }
+        }
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -367,9 +391,13 @@ class Program
 
             WriteJson(ctx, 200, json);
         }
-        catch
+        catch (Exception ex)
         {
             try { ctx.Response.Abort(); } catch { }
+            try { File.AppendAllText(
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "hw_error.log"),
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Serve() error:\n{ex}\n"); }
+            catch { }
         }
     }
 

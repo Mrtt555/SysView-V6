@@ -56,7 +56,7 @@ function isActive() {
 
 /* ── Meilleure video de la page ──────────────────────────────────────────── */
 function getBestVideo() {
-  if (location.hostname.includes('youtube.com')) {
+  if (location.hostname.includes('youtube.com') && !location.hostname.includes('music.youtube.com')) {
     var ytVid = document.querySelector('#movie_player video');
     if (ytVid && isFinite(ytVid.duration) && ytVid.duration > 0) return ytVid;
   }
@@ -86,7 +86,7 @@ function getTitle() {
   if (ms && ms.metadata && ms.metadata.title) return ms.metadata.title;
   var host = location.hostname;
   var el;
-  if (host.includes('youtube.com')) {
+  if (host.includes('youtube.com') && !host.includes('music.youtube.com')) {
     el = document.querySelector('h1.ytd-watch-metadata yt-formatted-string')
       || document.querySelector('#title h1 yt-formatted-string');
     if (el && el.textContent.trim()) return el.textContent.trim();
@@ -120,7 +120,7 @@ function getArtist() {
   if (ms && ms.metadata && ms.metadata.artist) return ms.metadata.artist;
   var host = location.hostname;
   var el;
-  if (host.includes('youtube.com')) {
+  if (host.includes('youtube.com') && !host.includes('music.youtube.com')) {
     el = document.querySelector('#top-row ytd-channel-name a')
       || document.querySelector('#channel-name a');
     if (el) return el.textContent.trim();
@@ -150,7 +150,7 @@ function getThumbUrl(video) {
   }
   var host = location.hostname;
   var match, el;
-  if (host.includes('youtube.com') || host.includes('youtu.be')) {
+  if ((host.includes('youtube.com') && !host.includes('music.youtube.com')) || host.includes('youtu.be')) {
     match = location.href.match(/[?&]v=([A-Za-z0-9_-]{11})/)
          || location.href.match(/youtu\.be\/([A-Za-z0-9_-]{11})/)
          || location.href.match(/\/shorts\/([A-Za-z0-9_-]{11})/);  /* YouTube Shorts */
@@ -226,7 +226,7 @@ function sendData() {
     var duration = video ? (isFinite(video.duration) ? video.duration : 0) : 0;
 
     /* YouTube : fallback DOM si video non encore initialisee */
-    if (location.hostname.includes('youtube.com') && !duration) {
+    if (location.hostname.includes('youtube.com') && !location.hostname.includes('music.youtube.com') && !duration) {
       var ytCur = document.querySelector('.ytp-time-current');
       var ytDur = document.querySelector('.ytp-time-duration');
       if (ytDur && ytDur.textContent.trim()) duration = parseTime(ytDur.textContent);

@@ -5,8 +5,7 @@
   "description": "Envoie les donnees de lecture media en temps reel a SysView (tous sites)",
   "permissions": [],
   "host_permissions": [
-    "http://127.0.0.1:5001/*",
-    "<all_urls>"
+    "http://127.0.0.1:5001/*"
   ],
   "content_scripts": [
     {

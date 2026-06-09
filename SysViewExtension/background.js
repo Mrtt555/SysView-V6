@@ -1,4 +1,4 @@
-﻿/* SysView — Background Service Worker v5
+﻿/* SysView — Background Service Worker v6
    Recoit les donnees du content script et les envoie au bridge.
    Le service worker n'est pas soumis aux restrictions Private Network Access. */
 
@@ -20,7 +20,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify(payload)
   })
-  .then(function(){ sendResponse({ok: true}); })
+  .then(function(r){ sendResponse({ok: r.ok}); if(!r.ok) console.warn('[SysView] Bridge HTTP ' + r.status); })
   .catch(function(e){
     console.warn('[SysView] Bridge inaccessible:', e.message);
     sendResponse({ok: false});
@@ -29,5 +29,5 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
 });
 
 chrome.runtime.onInstalled.addListener(function() {
-  console.log('[SysView] Extension installee v5');
+  console.log('[SysView] Extension installee v' + chrome.runtime.getManifest().version);
 });

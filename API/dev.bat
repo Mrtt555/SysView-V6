@@ -79,7 +79,7 @@ if not exist "!_PROJ!" (
     echo [ERREUR] Projet introuvable : !_PROJ!
     goto :fail
 )
-"!_DOTNET!" publish "!_PROJ!" -c Release -r win-x64 --nologo -v minimal -p:DebugType=none
+"!_DOTNET!" publish "!_PROJ!" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none --nologo -v minimal
 if errorlevel 1 (
     echo.
     echo [ERREUR] Publish echoue -- voir les erreurs ci-dessus.
