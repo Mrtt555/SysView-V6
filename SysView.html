@@ -910,7 +910,7 @@ async function fetchWeather(){
     var code = d.om_weather_code || 0;
     var temp = fmtTemp(d.om_temp);
     var prec = (d.om_precip_prob !== null && d.om_precip_prob !== undefined) ? d.om_precip_prob : '—';
-    var wind = (+(d.om_wind||0)).toFixed(1);
+    var wind = (d.om_wind !== null && d.om_wind !== undefined) ? (+(d.om_wind)).toFixed(1) : '—';
 
     var aqiVal = d.om_aqi;
     var aqiLbl = aqiLabel(aqiVal, CFG.lang);    /* toujours calculé côté JS (multilingue) */
@@ -948,7 +948,7 @@ async function fetchWeather(){
       '</div></div>'+
       '<div class="wstats">'+
         '<div class="wstat"><div class="wslabel">'+T('precip')+'</div><div class="wsval">'+prec+'<span class="wsunit">'+(prec!=='—'?' %':'')+'</span></div></div>'+
-        '<div class="wstat"><div class="wslabel">'+T('wind')+'</div><div class="wsval">'+wind+'<span class="wsunit"> km/h</span></div></div>'+
+        '<div class="wstat"><div class="wslabel">'+T('wind')+'</div><div class="wsval">'+wind+'<span class="wsunit">'+(wind!=='—'?' km/h':'')+'</span></div></div>'+
       '</div>'+pollenHtml;
     /* Si pollen/QAI pas encore disponibles (2e requête bridge en retard au boot)
        → retry dans 5s, mais au maximum 5 fois (25s) pour éviter une boucle infinie
