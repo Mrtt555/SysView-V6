@@ -67,17 +67,18 @@ if not exist "!_BASE!\" (
     echo  sur un wallpaper -^> "Ouvrir le dossier" pour trouver
     echo  le bon chemin myprojects.
     echo.
-    pause ^& exit /b 1
+    pause & exit /b 1
 )
 
 if exist "!_DEST!\" (
     echo  [AVERT] SysView V6 est deja installe.
-    echo  Les fichiers seront mis a jour (runtime_config.json conserve, Aether retelecharge).
+    echo  Les fichiers seront mis a jour ^(runtime_config.json conserve, Aether retelecharge^).
     echo.
-    set /p "_OK=  Continuer ? (O / N) : "
+    set /p "_OK=  Continuer ? [O / N] : "
     if /i "!_OK:~0,1!" NEQ "O" (
         call :log "[INFO] Installation annulee par l'utilisateur."
-        pause ^& exit /b 0
+        pause
+        exit /b 0
     )
     echo.
 )
@@ -121,8 +122,22 @@ mkdir "!_BCK!" >nul 2>&1
 if exist "!_API!\runtime_config.json" copy /y "!_API!\runtime_config.json" "!_BCK!\runtime_config.json" >nul 2>&1
 
 :: Remplacer / installer
-if exist "!_DEST!\" powershell -NoProfile -Command "Remove-Item '!_DEST!' -Recurse -Force"
-powershell -NoProfile -Command "Move-Item '!_SRC!' '!_DEST!'"
+rem Si setup.bat tourne depuis !_DEST!, robocopy met a jour sur place
+rem (evite de supprimer le dossier parent du script en cours d'execution).
+if exist "!_DEST!\" (
+    robocopy "!_SRC!" "!_DEST!" /E /IS /IT /PURGE /XF "runtime_config.json" "setup.bat" /XD "logs" >nul 2>&1
+    rem robocopy : 0-7 = succes  8+ = erreur
+    if !errorlevel! GEQ 8 (
+        call :log "[ERREUR] Mise a jour echouee (robocopy code !errorlevel!)."
+        pause & exit /b 1
+    )
+) else (
+    powershell -NoProfile -Command "Move-Item '!_SRC!' '!_DEST!'"
+    if errorlevel 1 (
+        call :log "[ERREUR] Installation initiale : deplacement echoue."
+        pause & exit /b 1
+    )
+)
 if not exist "!_DEST!\SysView.html" (
     call :log "[ERREUR] SysView.html introuvable apres extraction."
     pause & exit /b 1
@@ -168,7 +183,7 @@ if not defined _DOTNET (
         "& { $f='%TEMP%\dotnet-install.ps1'; Invoke-WebRequest 'https://dot.net/v1/dotnet-install.ps1' -OutFile $f -UseBasicParsing; & $f -Channel 8.0 -InstallDir '$env:USERPROFILE\.dotnet' }" >> "%_LOGFILE%" 2>&1
     if errorlevel 1 (
         call :log "[ERREUR] Installation SDK .NET 8 echouee."
-        pause ^& exit /b 1
+        pause & exit /b 1
     )
     set "_DOTNET=%USERPROFILE%\.dotnet\dotnet.exe"
 )
@@ -183,12 +198,12 @@ echo  Compilation en cours ^(premiere fois ~2-3 min -- NuGet + build^)...
 if errorlevel 1 (
     call :log "[ERREUR] Compilation SysViewHardware echouee."
     echo  Verifiez que le projet est intact : !_HW_PROJ!
-    pause ^& exit /b 1
+    pause & exit /b 1
 )
 
 if not exist "!_HW_EXE!" (
     call :log "[ERREUR] SysViewHardware.exe introuvable apres compilation."
-    pause ^& exit /b 1
+    pause & exit /b 1
 )
 call :log "[OK] SysViewHardware.exe compile (autonome)."
 
