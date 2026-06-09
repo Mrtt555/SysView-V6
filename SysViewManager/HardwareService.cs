@@ -49,6 +49,10 @@ public sealed class HardwareService : IDisposable
     private readonly Thread  _thread;
     private volatile bool    _running = true;
 
+    // Flags de découverte — pour ne logger qu'une seule fois
+    private bool _hwDiscovered = false;
+    private HashSet<string> _knownDrives = new();
+
     // Export JSON
     private readonly string _dataDir;
     private static readonly JsonSerializerOptions _jsonOpts = new() { WriteIndented = true };
@@ -63,15 +67,28 @@ public sealed class HardwareService : IDisposable
             IsMemoryEnabled  = true,
             IsNetworkEnabled = true,
         };
-        try   { _hw.Open(); _hwOpen = true;  Logger.Info("LHM ouvert — capteurs actifs"); }
-        catch (Exception ex) { _hwOpen = false; Logger.Warn($"LHM indisponible : {ex.Message}"); }
 
-        Poll();
+        try
+        {
+            _hw.Open();
+            _hwOpen = true;
+            Logger.Info("LHM", "LibreHardwareMonitor ouvert — capteurs actifs");
+        }
+        catch (Exception ex)
+        {
+            _hwOpen = false;
+            Logger.Warn("LHM", $"LibreHardwareMonitor indisponible : {ex.Message}");
+            Logger.Warn("LHM", "Fonctionnement en mode dégradé (valeurs CPU/GPU/RAM absentes)");
+        }
+
+        Poll();  // Premier poll synchrone (peuple le snapshot initial)
 
         _thread = new Thread(() => {
             while (_running) { Thread.Sleep(500); if (_running) Poll(); }
         }) { IsBackground = true, Name = "hw-poll" };
         _thread.Start();
+
+        Logger.Debug("LHM", "Thread de polling démarré (intervalle 500 ms)");
     }
 
     public HardwareSnapshot GetSnapshot() { lock (_mu) return _snap; }
@@ -91,19 +108,45 @@ public sealed class HardwareService : IDisposable
                     ReadHardware(h, s);
             }
 
-            // Fallback réseau via NetworkInterface (si LHM ne l'a pas fourni)
+            // Fallback réseau via NetworkInterface (si LHM network absent)
             if (s.NetDlKb == 0 && s.NetEthDlKb == 0)
                 UpdateNetFallback(s);
 
             // Disques via DriveInfo (LHM Network ne couvre pas les disques)
             ReadDisks(s);
 
+            // ── Log premier démarrage avec matériel détecté ───────────────────
+            if (_hwOpen && !_hwDiscovered && s.CpuName != null)
+            {
+                _hwDiscovered = true;
+                Logger.Info("LHM", "── Matériel détecté ──────────────────────────────────");
+                Logger.Info("LHM", $"  CPU  : {s.CpuName ?? "inconnu"}");
+                Logger.Info("LHM", $"  GPU  : {s.GpuName ?? "non détecté"}");
+                Logger.Info("LHM", $"  RAM  : {s.RamTotalMb} MB total");
+                if (s.VramTotal.HasValue)
+                    Logger.Info("LHM", $"  VRAM : {s.VramTotal:F0} MB total");
+                Logger.Info("LHM", "──────────────────────────────────────────────────────");
+            }
+
+            // ── Log ajout/retrait de disques ──────────────────────────────────
+            var letters = s.Disks.Select(d => d.Letter).ToHashSet();
+            if (!letters.SetEquals(_knownDrives))
+            {
+                _knownDrives = letters;
+                Logger.Info("LHM", $"Disques détectés ({s.Disks.Count}) :");
+                foreach (var d in s.Disks)
+                    Logger.Info("LHM", $"  {d.Letter.ToUpper()}:  {d.UsedGb:F1} Go / {d.TotalGb:F0} Go  ({d.Percent:F0}% utilisé){(d.Removable ? " [amovible]" : "")}");
+            }
+
             lock (_mu) _snap = s;
 
             // Export Hardware.json toutes les 500 ms (= chaque poll)
             WriteHardwareJson(s);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.Error("LHM", "Erreur inattendue dans Poll()", ex);
+        }
     }
 
     // ─── Export Hardware.json ─────────────────────────────────────────────────
@@ -346,7 +389,15 @@ public sealed class HardwareService : IDisposable
     public void Dispose()
     {
         _running = false;
-        try { if (_hwOpen) _hw.Close(); } catch { }
+        Logger.Info("LHM", "Fermeture de LibreHardwareMonitor...");
+        try
+        {
+            if (_hwOpen) { _hw.Close(); Logger.Info("LHM", "LHM fermé proprement"); }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn("LHM", $"Erreur à la fermeture LHM : {ex.Message}");
+        }
     }
 
     // ── Visitor LHM (inner class) ─────────────────────────────────────────────

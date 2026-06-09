@@ -27,12 +27,23 @@ static class Program
         var logsDir = Path.Combine(AppDataDir, "logs");
         Directory.CreateDirectory(logsDir);
         Logger.Init(logsDir);
-        Logger.Info($"=== SysView V6 démarrage (PID {Environment.ProcessId}) ===");
+
+        // ── En-tête de démarrage ──────────────────────────────────────────────
+        Logger.Separator("Program");
+        Logger.Info("Program", $"=== SysView V6 démarrage ===");
+        Logger.Info("Program", $"PID      = {Environment.ProcessId}");
+        Logger.Info("Program", $"Exe      = {Environment.ProcessPath}");
+        Logger.Info("Program", $"OS       = {Environment.OSVersion}  ({(Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit")})");
+        Logger.Info("Program", $".NET     = {Environment.Version}");
+        Logger.Info("Program", $"AppData  = {AppDataDir}");
+        Logger.Info("Program", $"Logs     = {logsDir}");
+        Logger.Separator("Program");
 
         // ── Instance unique ───────────────────────────────────────────────────
         using var mutex = new Mutex(true, "Global\\SysViewManagerMutex", out bool isNew);
         if (!isNew)
         {
+            Logger.Warn("Program", "Instance déjà en cours — fermeture (mutex pris)");
             MessageBox.Show(
                 "SysView V6 est déjà en cours d'exécution.\nVérifiez l'icône dans la barre système.",
                 "SysView V6", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -40,40 +51,73 @@ static class Program
         }
 
         // ── Démarrage automatique (tâche planifiée admin) ─────────────────────
-        EnsureAutoStart();
+        Logger.Info("Program", "Vérification du démarrage automatique (schtasks)...");
+        bool autoStartOk = IsAutoStartRegistered();
+        if (!autoStartOk)
+        {
+            Logger.Info("Program", "Tâche planifiée absente — création...");
+            EnsureAutoStart();
+            Logger.Info("Program", IsAutoStartRegistered()
+                ? "Tâche planifiée créée avec succès"
+                : "Tâche planifiée : création échouée (droits insuffisants ?)");
+        }
+        else
+        {
+            Logger.Info("Program", "Tâche planifiée SysViewManager : OK");
+        }
 
         // ── Services ──────────────────────────────────────────────────────────
-        using var hwSvc   = new HardwareService(AppDataDir);
-        var diskSvc       = new DiskService();
-        var rtCfg         = new RuntimeConfig(AppDataDir);
+        Logger.Info("Program", "Initialisation des services...");
+
+        Logger.Info("Program", "  [1/5] RuntimeConfig...");
+        var rtCfg = new RuntimeConfig(AppDataDir);
+
+        Logger.Info("Program", "  [2/5] HardwareService (LHM)...");
+        using var hwSvc = new HardwareService(AppDataDir);
+
+        Logger.Info("Program", "  [3/5] DiskService...");
+        var diskSvc = new DiskService();
+
+        Logger.Info("Program", "  [4/5] WeatherService (Open-Meteo)...");
         using var weather = new WeatherService(rtCfg, AppDataDir);
-        var media         = new MediaState();
+
+        Logger.Info("Program", "  [5/5] MediaState...");
+        var media = new MediaState();
 
         // ── SMTC — détection native du média en cours ─────────────────────────
-        // Événementiel (zéro CPU si rien ne joue). Silencieux si SMTC indisponible.
-        // Priorité : extension Chrome (POST /v1/media) > SMTC.
-        // Requiert Windows 10 1809 (17763+) — guard explicite pour éviter CA1416.
         var cts    = new CancellationTokenSource();
         SmtcService? smtc = null;
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763))
         {
+            Logger.Info("Program", "SMTC : Windows 10 1809+ détecté — démarrage du service...");
             smtc = new SmtcService(media);
             _ = smtc.StartAsync(cts.Token);
         }
+        else
+        {
+            Logger.Warn("Program", $"SMTC : Windows {Environment.OSVersion.Version} trop ancien (< 17763) — désactivé");
+        }
 
         // ── Bridge HTTP (ASP.NET Core) sur thread background ─────────────────
+        Logger.Info("Program", "BridgeServer : démarrage du serveur HTTP...");
         var bridge = new BridgeServer(hwSvc, diskSvc, weather, media, rtCfg);
         var srv    = Task.Run(() => bridge.RunAsync(cts.Token));
 
         // ── Tray sur le thread STA principal ─────────────────────────────────
+        Logger.Info("Program", "TrayApp : création de l'icône système...");
+        Logger.Info("Program", "=== Tous les services démarrés — en attente d'événements ===");
         using var tray = new TrayApp(hwSvc, weather, AppDataDir);
         Application.Run(tray);
 
         // ── Nettoyage à la fermeture ──────────────────────────────────────────
-        Logger.Info("=== SysView V6 arrêt ===");
+        Logger.Separator("Program");
+        Logger.Info("Program", "=== SysView V6 arrêt ===");
+        Logger.Info("Program", "Annulation des services...");
         cts.Cancel();
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763)) smtc?.Dispose();
         try { srv.Wait(TimeSpan.FromSeconds(3)); } catch { }
+        Logger.Info("Program", "Arrêt propre terminé.");
+        Logger.Separator("Program");
     }
 
     // ─── Tâche planifiée — création silencieuse au 1er lancement ─────────────
@@ -112,6 +156,7 @@ static class Program
                       ?? "";
             if (string.IsNullOrEmpty(exe)) return;
 
+            Logger.Info("Program", $"schtasks /create — exe={exe}");
             using var p = new System.Diagnostics.Process
             {
                 StartInfo = new System.Diagnostics.ProcessStartInfo("schtasks.exe",
@@ -132,6 +177,7 @@ static class Program
     {
         try
         {
+            Logger.Info("Program", "schtasks /delete SysViewManager");
             using var p = new System.Diagnostics.Process
             {
                 StartInfo = new System.Diagnostics.ProcessStartInfo("schtasks.exe",

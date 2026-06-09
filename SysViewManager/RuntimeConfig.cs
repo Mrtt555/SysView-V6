@@ -26,6 +26,7 @@ public sealed class RuntimeConfig
     public RuntimeConfig(string appDataDir)
     {
         _path = Path.Combine(appDataDir, "runtime_config.json");
+        Logger.Info("Config", $"Fichier config : {_path}");
 
         // Migration depuis l'ancien emplacement API/runtime_config.json
         MigrateFromOldPath(appDataDir);
@@ -39,17 +40,34 @@ public sealed class RuntimeConfig
                        int? intervalMin = null, string? netIface = null,
                        bool? lhmEnabled = null, string? weatherModel = null)
     {
+        var changes = new List<string>();
         lock (_mu)
         {
-            if (lat          != null) Lat               = lat.Value;
-            if (lon          != null) Lon               = lon.Value;
-            if (city         != null) City              = city;
-            if (intervalMin  != null) WeatherIntervalMin = Math.Clamp(intervalMin.Value, 1, 60);
-            if (netIface     != null && netIface is "auto" or "eth" or "wifi") NetworkIface = netIface;
-            if (lhmEnabled   != null) LhmEnabled        = lhmEnabled.Value;
-            if (weatherModel != null && WeatherService.WEATHER_MODELS.ContainsKey(weatherModel))
-                WeatherModel = weatherModel;
+            if (lat != null && lat.Value != Lat)
+                { Lat = lat.Value; changes.Add($"lat={Lat}"); }
+            if (lon != null && lon.Value != Lon)
+                { Lon = lon.Value; changes.Add($"lon={Lon}"); }
+            if (city != null && city != City)
+                { City = city; changes.Add($"city={City}"); }
+            if (intervalMin != null)
+            {
+                var v = Math.Clamp(intervalMin.Value, 1, 60);
+                if (v != WeatherIntervalMin) { WeatherIntervalMin = v; changes.Add($"interval={v}min"); }
+            }
+            if (netIface != null && netIface is "auto" or "eth" or "wifi" && netIface != NetworkIface)
+                { NetworkIface = netIface; changes.Add($"net={NetworkIface}"); }
+            if (lhmEnabled != null && lhmEnabled.Value != LhmEnabled)
+                { LhmEnabled = lhmEnabled.Value; changes.Add($"lhm={LhmEnabled}"); }
+            if (weatherModel != null && WeatherService.WEATHER_MODELS.ContainsKey(weatherModel)
+                && weatherModel != WeatherModel)
+                { WeatherModel = weatherModel; changes.Add($"modèle={WeatherModel}"); }
         }
+
+        if (changes.Count > 0)
+            Logger.Info("Config", $"Mise à jour : {string.Join(" | ", changes)}");
+        else
+            Logger.Debug("Config", "Update() appelé sans changement effectif");
+
         Save();
     }
 
@@ -64,11 +82,18 @@ public sealed class RuntimeConfig
 
     private void Load()
     {
+        if (!File.Exists(_path))
+        {
+            Logger.Info("Config", "Fichier absent — valeurs par défaut utilisées");
+            Logger.Info("Config", $"  lat={Lat} lon={Lon} ville={City} intervalle={WeatherIntervalMin}min modèle={WeatherModel} réseau={NetworkIface}");
+            return;
+        }
+
         try
         {
-            if (!File.Exists(_path)) return;
             var json = JsonNode.Parse(File.ReadAllText(_path, System.Text.Encoding.UTF8));
-            if (json == null) return;
+            if (json == null) { Logger.Warn("Config", "Fichier JSON invalide — valeurs par défaut"); return; }
+
             if (json["lat"]  is JsonNode la) Lat  = la.GetValue<double>();
             if (json["lon"]  is JsonNode lo) Lon  = lo.GetValue<double>();
             if (json["city"] is JsonNode ci && ci.GetValue<string>() is { Length: > 0 } c)
@@ -85,8 +110,16 @@ public sealed class RuntimeConfig
                 var v = wm.GetValue<string>();
                 if (v != null && WeatherService.WEATHER_MODELS.ContainsKey(v)) WeatherModel = v;
             }
+
+            Logger.Info("Config", "Config chargée :");
+            Logger.Info("Config", $"  ville={City}  lat={Lat}  lon={Lon}");
+            Logger.Info("Config", $"  météo : intervalle={WeatherIntervalMin}min  modèle={WeatherModel}");
+            Logger.Info("Config", $"  réseau={NetworkIface}  lhm={LhmEnabled}");
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.Error("Config", "Erreur lecture config — valeurs par défaut utilisées", ex);
+        }
     }
 
     private void Save()
@@ -110,8 +143,12 @@ public sealed class RuntimeConfig
                 weather_model        = model,
             };
             File.WriteAllText(_path, JsonSerializer.Serialize(obj, opts), System.Text.Encoding.UTF8);
+            Logger.Debug("Config", $"Sauvegardé → {_path}");
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.Error("Config", "Erreur sauvegarde config", ex);
+        }
     }
 
     // ─── Migration depuis API/runtime_config.json ─────────────────────────────
@@ -120,10 +157,8 @@ public sealed class RuntimeConfig
     {
         if (File.Exists(_path)) return; // déjà migré
 
-        // Chercher l'ancien fichier (API/ dans un dossier parent quelconque)
         try
         {
-            // Ex : si l'exe est dans SysView V6\SysViewManager\... on remonte
             var exeDir = AppContext.BaseDirectory;
             var candidates = new[]
             {
@@ -135,10 +170,13 @@ public sealed class RuntimeConfig
             {
                 if (!File.Exists(old)) continue;
                 File.Copy(old, _path, overwrite: false);
-                // Ne pas supprimer l'ancien — robocopy le fera lors d'une mise à jour
+                Logger.Info("Config", $"Migration depuis l'ancien chemin : {old}");
                 break;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.Warn("Config", $"Migration échouée : {ex.Message}");
+        }
     }
 }

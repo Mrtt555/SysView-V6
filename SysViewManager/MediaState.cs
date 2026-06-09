@@ -46,7 +46,13 @@ public sealed class MediaState
             // Priorité source : ne pas écraser un titre en cours par une source en pause
             if (title.Length > 0 && title != _snap.Title
                 && _snap.Title.Length > 0 && _snap.Playing && !playing)
+            {
+                Logger.Debug("Media", $"  Extension ignorée (priorité source) : \"{title}\" (pause) < \"{_snap.Title}\" (lecture)");
                 return false;
+            }
+
+            bool sourceChanged = _snap.Source != "extension";
+            bool titleChanged  = _snap.Title  != title;
 
             _snap = new Snapshot
             {
@@ -59,6 +65,14 @@ public sealed class MediaState
                 ThumbUrl   = thumbUrl,
                 LastUpdate = now,
             };
+
+            if (sourceChanged)
+                Logger.Info("Media", $"Source → extension Chrome | {(playing ? "▶" : "⏸")} \"{title}\" — {artist}");
+            else if (titleChanged && title.Length > 0)
+                Logger.Info("Media", $"Extension : nouveau titre — {(playing ? "▶" : "⏸")} \"{title}\" — {artist}");
+            else
+                Logger.Debug("Media", $"Extension : position/état — {(playing ? "▶" : "⏸")} {position:F0}s / {duration:F0}s");
+
             return true;
         }
     }
@@ -77,13 +91,25 @@ public sealed class MediaState
             double now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
 
             // L'extension Chrome a la priorité si elle est active
-            if (_extLastPost > 0 && (now - _extLastPost) < 5.0) return;
+            if (_extLastPost > 0 && (now - _extLastPost) < 5.0)
+            {
+                Logger.Debug("Media", $"  SMTC ignoré (extension active depuis {(now - _extLastPost):F1}s) : \"{title}\"");
+                return;
+            }
 
             if (string.IsNullOrEmpty(title))
             {
-                if (_snap.Source == "smtc") _snap = new Snapshot();
+                if (_snap.Source == "smtc")
+                {
+                    Logger.Info("Media", "SMTC : titre vide — état réinitialisé");
+                    _snap = new Snapshot();
+                }
                 return;
             }
+
+            bool sourceChanged = _snap.Source != "smtc";
+            bool titleChanged  = _snap.Title  != title;
+            bool playingChanged= _snap.Playing != playing;
 
             _snap = new Snapshot
             {
@@ -96,6 +122,15 @@ public sealed class MediaState
                 ThumbUrl   = thumbUrl,
                 LastUpdate = now,
             };
+
+            if (sourceChanged)
+                Logger.Info("Media", $"Source → SMTC | {(playing ? "▶" : "⏸")} \"{title}\" — {artist}");
+            else if (titleChanged)
+                Logger.Info("Media", $"SMTC : nouveau titre — {(playing ? "▶" : "⏸")} \"{title}\" — {artist}");
+            else if (playingChanged)
+                Logger.Info("Media", $"SMTC : état {(playing ? "▶ lecture" : "⏸ pause")} — \"{title}\"");
+            else
+                Logger.Debug("Media", $"SMTC : position — {position:F0}s / {duration:F0}s");
         }
     }
 
@@ -108,8 +143,16 @@ public sealed class MediaState
         lock (_mu)
         {
             double now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
-            if (_extLastPost > 0 && (now - _extLastPost) < 5.0) return;
-            if (_snap.Source == "smtc") _snap = new Snapshot();
+            if (_extLastPost > 0 && (now - _extLastPost) < 5.0)
+            {
+                Logger.Debug("Media", "ClearSmtc ignoré (extension active)");
+                return;
+            }
+            if (_snap.Source == "smtc")
+            {
+                Logger.Info("Media", $"SMTC : session terminée — état réinitialisé (était : \"{_snap.Title}\")");
+                _snap = new Snapshot();
+            }
         }
     }
 }

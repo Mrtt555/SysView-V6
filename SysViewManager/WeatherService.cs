@@ -9,6 +9,7 @@
 //   - /api/config  (write)    → RuntimeConfig.Update()
 //   - /api/live_data          → GetData() + GetFullResponse()
 // =============================================================
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -90,10 +91,15 @@ public sealed class WeatherService : IDisposable
     private readonly string _dataDir;
     private static readonly JsonSerializerOptions _jsonOpts = new() { WriteIndented = true };
 
+    // Compteur de fetches pour les logs
+    private int _fetchCount = 0;
+
     public WeatherService(RuntimeConfig cfg, string dataDir = "")
     {
         _cfg      = cfg;
         _dataDir  = dataDir;
+        Logger.Info("Weather", $"Service initialisé (dataDir={dataDir})");
+        Logger.Info("Weather", $"Délai initial avant 1er fetch : 3 s");
         _loopTask = Task.Run(LoopAsync);
     }
 
@@ -103,7 +109,8 @@ public sealed class WeatherService : IDisposable
 
     public void TriggerRefresh()
     {
-        _waitCts.Cancel();        // réveille le délai en cours
+        Logger.Info("Weather", "Rafraîchissement forcé demandé");
+        _waitCts.Cancel();
         _waitCts = new CancellationTokenSource();
     }
 
@@ -111,19 +118,32 @@ public sealed class WeatherService : IDisposable
 
     public async Task<(double Lat, double Lon, string City)?> GeocodeAsync(string query)
     {
+        Logger.Info("Weather", $"Géocodage : \"{query}\"...");
         try
         {
             var url  = $"{OM_GEOCODING}?name={Uri.EscapeDataString(query)}&count=1&language=fr&format=json";
+            Logger.Debug("Weather", $"  GET {url}");
             var resp = await _http.GetStringAsync(url);
             var json = JsonNode.Parse(resp);
             var results = json?["results"]?.AsArray();
-            if (results == null || results.Count == 0) return null;
+            if (results == null || results.Count == 0)
+            {
+                Logger.Warn("Weather", $"  Géocodage : aucun résultat pour \"{query}\"");
+                return null;
+            }
             var first = results[0]!;
-            return (first["latitude"]!.GetValue<double>(),
-                    first["longitude"]!.GetValue<double>(),
-                    first["name"]?.GetValue<string>() ?? query);
+            double lat  = first["latitude"]!.GetValue<double>();
+            double lon  = first["longitude"]!.GetValue<double>();
+            string city = first["name"]?.GetValue<string>() ?? query;
+            string country = first["country"]?.GetValue<string>() ?? "";
+            Logger.Info("Weather", $"  Géocodage OK : {city} ({country}) → lat={G(lat)} lon={G(lon)}");
+            return (lat, lon, city);
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            Logger.Error("Weather", $"Géocodage échoué pour \"{query}\"", ex);
+            return null;
+        }
     }
 
     // ─── Résolution de modèle (portée depuis Aether _resolve_model) ──────────
@@ -153,21 +173,38 @@ public sealed class WeatherService : IDisposable
                 string modelCfg = _cfg.WeatherModel;
                 string modelId  = ResolveModel(modelCfg, lat, lon);
 
+                // Log la résolution du modèle si elle change par rapport à la config
+                if (modelId != modelCfg)
+                    Logger.Debug("Weather", $"Modèle résolu : {modelCfg} → {modelId} (position en France métropolitaine)");
+
+                _fetchCount++;
+                var sw = Stopwatch.StartNew();
                 bool ok = false;
+
+                Logger.Info("Weather", $"── Fetch #{_fetchCount} ─────────────────────────────────");
+                Logger.Info("Weather", $"  Lieu     : {city}  lat={G(lat)}  lon={G(lon)}");
+                Logger.Info("Weather", $"  Modèle   : {modelId}");
+
                 try
                 {
-                    Logger.Info($"Météo fetch — modèle={modelId} lat={G(lat)} lon={G(lon)}");
                     var data = await FetchLiveAsync(lat, lon, modelId);
+                    sw.Stop();
                     lock (_mu) _data = data;
                     WriteWeatherJson(data);
                     fail = 0;
                     ok   = true;
-                    Logger.Info($"Météo OK — {data.Temp}°C, code={data.WeatherCode}, vent={data.Wind} km/h");
+
+                    Logger.Info("Weather", $"  Résultat : {data.Temp}°C  ressenti={data.FeelsLike}°C  humidité={data.Humidity}%");
+                    Logger.Info("Weather", $"  Vent     : {data.Wind} km/h (rafales {data.WindGusts} km/h)  dir={data.WindDir}°");
+                    Logger.Info("Weather", $"  UV={data.Uv}  nuages={data.CloudCover}%  pluie={data.Precip}mm ({data.PrecipProb}%)");
+                    Logger.Info("Weather", $"  Air      : AQI={data.Aqi} ({data.AqiLabel})  pollen={data.Pollen} ({data.PollenLabel})");
+                    Logger.Info("Weather", $"  Durée    : {sw.ElapsedMilliseconds} ms");
                 }
                 catch (Exception ex)
                 {
+                    sw.Stop();
                     fail++;
-                    Logger.Error($"Météo fetch échoué (tentative {fail})", ex);
+                    Logger.Error("Weather", $"  Fetch échoué (tentative {fail}, {sw.ElapsedMilliseconds} ms)", ex);
                 }
 
                 // Délai : intervalle normal si ok, backoff exponentiel sinon
@@ -175,10 +212,16 @@ public sealed class WeatherService : IDisposable
                     ? intervalMin * 60
                     : Math.Min(30 * (int)Math.Pow(2, Math.Min(fail - 1, 4)), intervalMin * 60);
 
+                Logger.Info("Weather", $"  Prochain fetch dans : {delay} s  ({(ok ? "normal" : $"backoff fail={fail}")})");
+
                 try { await Task.Delay(TimeSpan.FromSeconds(Math.Max(delay, 30)), _waitCts.Token); }
-                catch (OperationCanceledException) { /* refresh déclenché manuellement */ }
+                catch (OperationCanceledException) { Logger.Info("Weather", "Attente interrompue (rafraîchissement forcé)"); }
             }
-            catch { await Task.Delay(30_000); }
+            catch (Exception ex)
+            {
+                Logger.Error("Weather", "Erreur inattendue dans la boucle météo", ex);
+                await Task.Delay(30_000);
+            }
         }
     }
 
@@ -186,11 +229,16 @@ public sealed class WeatherService : IDisposable
 
     private async Task<WeatherData> FetchLiveAsync(double lat, double lon, string modelId)
     {
+        Logger.Debug("Weather", "  Lancement des 3 appels parallèles (current / forecast / air)...");
+        var sw = Stopwatch.StartNew();
+
         // Appels parallèles : météo courante + prévisions 48h + qualité de l'air
         var tWeather  = FetchCurrentAsync(lat, lon, modelId);
         var tForecast = FetchForecastAsync(lat, lon, modelId);
         var tAir      = FetchAirAsync(lat, lon);
         await Task.WhenAll(tWeather, tForecast, tAir);
+
+        Logger.Debug("Weather", $"  Appels parallèles terminés en {sw.ElapsedMilliseconds} ms");
 
         var cu = tWeather.Result?["current"];
         var aq = tAir.Result?["current"];
@@ -210,14 +258,19 @@ public sealed class WeatherService : IDisposable
         // Fallback precipitation_probability (AROME ne la fournit pas en current)
         if (precipProb == null)
         {
+            Logger.Debug("Weather", "  precipitation_probability absent en current → fallback endpoint séparé");
             try
             {
                 var url   = $"{OM_FORECAST}?latitude={G(lat)}&longitude={G(lon)}" +
                             "&current=precipitation_probability&timezone=auto&format=json";
                 var resp2 = await _http.GetStringAsync(url);
                 precipProb = N<int>(JsonNode.Parse(resp2)?["current"]?["precipitation_probability"]);
+                Logger.Debug("Weather", $"  precipitation_probability (fallback) = {precipProb}%");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Logger.Warn("Weather", $"  Fallback precipitation_probability échoué : {ex.Message}");
+            }
         }
 
         int?    aqi    = N<int>(aq?["european_aqi"]);
@@ -272,6 +325,7 @@ public sealed class WeatherService : IDisposable
         var url = $"{OM_FORECAST}?latitude={G(lat)}&longitude={G(lon)}" +
                   $"&current={string.Join(",", DEFAULT_WEATHER_PARAMS)}" +
                   $"&models={modelId}&timezone=auto&forecast_days=1";
+        Logger.Debug("Weather", $"  GET forecast/current : ...lat={G(lat)}&lon={G(lon)}&models={modelId}");
         return JsonNode.Parse(await _http.GetStringAsync(url));
     }
 
@@ -280,6 +334,7 @@ public sealed class WeatherService : IDisposable
         var url = $"{OM_FORECAST}?latitude={G(lat)}&longitude={G(lon)}" +
                   "&hourly=temperature_2m,precipitation,weather_code,wind_speed_10m" +
                   $"&models={modelId}&timezone=auto&forecast_days=2";
+        Logger.Debug("Weather", $"  GET forecast/hourly  : ...lat={G(lat)}&lon={G(lon)}&models={modelId}");
         return JsonNode.Parse(await _http.GetStringAsync(url));
     }
 
@@ -287,6 +342,7 @@ public sealed class WeatherService : IDisposable
     {
         var url = $"{OM_AIR}?latitude={G(lat)}&longitude={G(lon)}" +
                   $"&current={string.Join(",", DEFAULT_AIR_PARAMS)}&timezone=auto";
+        Logger.Debug("Weather", $"  GET air-quality      : ...lat={G(lat)}&lon={G(lon)}");
         return JsonNode.Parse(await _http.GetStringAsync(url));
     }
 
@@ -334,8 +390,13 @@ public sealed class WeatherService : IDisposable
             File.WriteAllText(
                 Path.Combine(_dataDir, "Weather.json"),
                 json, System.Text.Encoding.UTF8);
+
+            Logger.Debug("Weather", $"  Weather.json mis à jour ({json.Length} octets)");
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.Error("Weather", "Erreur écriture Weather.json", ex);
+        }
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -355,6 +416,7 @@ public sealed class WeatherService : IDisposable
 
     public void Dispose()
     {
+        Logger.Info("Weather", "Arrêt du service météo");
         _running = false;
         _waitCts.Cancel();
         _http.Dispose();

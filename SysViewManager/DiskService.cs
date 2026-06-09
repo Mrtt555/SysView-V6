@@ -18,10 +18,9 @@ public sealed class DiskInfo
 public sealed class DiskService : IDisposable
 {
     private static readonly CultureInfo IC  = CultureInfo.InvariantCulture;
-    private const double TiB = 1_099_511_627_776.0;
-    private const double GiB = 1_073_741_824.0;
 
     private Dictionary<string, DiskInfo> _disks = new();
+    private HashSet<string> _lastLetters = new();
     private readonly object _mu = new();
 
     // ─── Lecture du cache ─────────────────────────────────────────────────────
@@ -36,10 +35,31 @@ public sealed class DiskService : IDisposable
     public void UpdateFromSnapshot(HardwareSnapshot snap)
     {
         if (snap.Disks.Count == 0) return;
-        var d = new Dictionary<string, DiskInfo>(snap.Disks.Count);
+
+        var d       = new Dictionary<string, DiskInfo>(snap.Disks.Count);
+        var letters = new HashSet<string>(snap.Disks.Count);
+
         foreach (var e in snap.Disks)
+        {
             d[e.Letter] = Build(e.UsedGb, e.TotalGb, e.FreeGb, e.Percent, e.Removable);
-        lock (_mu) _disks = d;
+            letters.Add(e.Letter);
+        }
+
+        // Ne loguer que si l'ensemble des lecteurs a changé
+        bool drivesChanged;
+        lock (_mu)
+        {
+            drivesChanged = !letters.SetEquals(_lastLetters);
+            _lastLetters  = letters;
+            _disks        = d;
+        }
+
+        if (drivesChanged)
+        {
+            Logger.Info("Disk", $"Lecteurs mis à jour ({d.Count}) :");
+            foreach (var kv in d)
+                Logger.Info("Disk", $"  {kv.Key.ToUpper()}: → {kv.Value.Display}  {kv.Value.Percent:F0}% utilisé{(kv.Value.Removable ? " [amovible]" : "")}");
+        }
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@
 // Aether est désormais intégré directement dans WeatherService.
 // Plus de subprocess Python — tout tourne en in-process.
 // =============================================================
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.RateLimiting;
@@ -31,6 +32,10 @@ public sealed class BridgeServer
     private readonly RuntimeConfig   _cfg;
     private readonly double          _startTime;
 
+    // Compteurs de requêtes (pour les logs périodiques)
+    private long _totalRequests  = 0;
+    private long _rateLimitHits  = 0;
+
     public BridgeServer(HardwareService hw, DiskService disk, WeatherService weather,
                         MediaState media, RuntimeConfig cfg)
     {
@@ -44,6 +49,8 @@ public sealed class BridgeServer
 
     public async Task RunAsync(CancellationToken ct)
     {
+        Logger.Info("Bridge", $"Initialisation du serveur ASP.NET Core sur http://127.0.0.1:{PORT}...");
+
         var builder = WebApplication.CreateBuilder(Array.Empty<string>());
 
         // Kestrel — port 5001 uniquement en loopback
@@ -53,8 +60,6 @@ public sealed class BridgeServer
         builder.Logging.ClearProviders();
 
         // ── CORS ──────────────────────────────────────────────────────────────
-        // Mêmes origines que le bridge Python :
-        //   null (Wallpaper Engine renderer), localhost, extension Chrome
         builder.Services.AddCors(opts => opts.AddDefaultPolicy(p =>
             p.SetIsOriginAllowed(o =>
                    o == "null"
@@ -79,6 +84,9 @@ public sealed class BridgeServer
                 o.QueueLimit  = 0;
             });
             opt.OnRejected = async (ctx, _) => {
+                System.Threading.Interlocked.Increment(ref _rateLimitHits);
+                var ip = ctx.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "?";
+                Logger.Warn("Bridge", $"Rate limit 429 — {ctx.HttpContext.Request.Method} {ctx.HttpContext.Request.Path} depuis {ip}  (total hits: {_rateLimitHits})");
                 ctx.HttpContext.Response.StatusCode = 429;
                 await ctx.HttpContext.Response.WriteAsJsonAsync(
                     new { error = "Too many requests", retry_after = 60 });
@@ -87,11 +95,31 @@ public sealed class BridgeServer
 
         var app = builder.Build();
 
-        // ── Rendu HTML pour les navigateurs ───────────────────────────────────
+        // ── Middleware 1 : logging de chaque requête ───────────────────────────
+        // GET /v1/perf et /v1/weather : DEBUG (très fréquent — Wallpaper Engine)
+        // Tout le reste : INFO
+        app.Use(async (ctx, next) =>
+        {
+            var sw  = Stopwatch.StartNew();
+            await next(ctx);
+            sw.Stop();
+
+            var method = ctx.Request.Method;
+            var path   = ctx.Request.Path.Value ?? "";
+            var status = ctx.Response.StatusCode;
+            var ms     = sw.ElapsedMilliseconds;
+            var count  = System.Threading.Interlocked.Increment(ref _totalRequests);
+
+            // Chemins à haute fréquence → DEBUG seulement
+            bool highFreq = path is "/v1/perf" or "/v1/weather" or "/v1/media";
+            if (highFreq)
+                Logger.Debug("HTTP", $"{method} {path} → {status} ({ms}ms)  [#{count}]");
+            else
+                Logger.Info("HTTP", $"{method} {path} → {status} ({ms}ms)  [#{count}]");
+        });
+
+        // ── Middleware 2 : rendu HTML pour les navigateurs ────────────────────
         // Brave/Chrome en dark mode affiche le JSON en texte sombre sur fond noir.
-        // Ce middleware intercepte les requêtes avec Accept:text/html et enveloppe
-        // la réponse JSON dans une page stylisée avec syntax highlighting.
-        // Les clients API (WE, extension, PowerShell) reçoivent du JSON pur.
         app.Use(async (ctx, next) =>
         {
             bool isBrowser = ctx.Request.Headers.Accept.ToString().Contains("text/html");
@@ -109,7 +137,6 @@ public sealed class BridgeServer
 
             if (ctx.Response.ContentType?.StartsWith("application/json") == true)
             {
-                // Formater le JSON avec indentation
                 string pretty = body;
                 try {
                     var el = JsonSerializer.Deserialize<JsonElement>(body);
@@ -192,13 +219,11 @@ public sealed class BridgeServer
 
         // ─────────────────────────────────────────────────────────────────────
         // GET /v1/weather
-        // Expose toutes les données météo (courant + prévisions + qualité d'air).
         // ─────────────────────────────────────────────────────────────────────
         app.MapGet("/v1/weather", (HttpContext _) =>
         {
             var w = _weather.GetData();
 
-            // Prévisions horaires : désérialiser le JSON brut stocké pour l'inclure
             JsonElement? forecastEl = null;
             if (w.ForecastJson is { Length: > 0 } fj)
             {
@@ -206,7 +231,6 @@ public sealed class BridgeServer
             }
 
             return Results.Json(new {
-                // ── Météo courante ──
                 om_temp          = w.Temp,
                 om_feels_like    = w.FeelsLike,
                 om_humidity      = w.Humidity,
@@ -218,17 +242,14 @@ public sealed class BridgeServer
                 om_wind_dir      = w.WindDir,
                 om_weather_code  = w.WeatherCode,
                 om_cloud_cover   = w.CloudCover,
-                // ── Qualité de l'air ──
                 om_aqi           = w.Aqi,
                 om_aqi_label     = w.AqiLabel,
                 om_pollen        = w.Pollen,
                 om_pollen_label  = w.PollenLabel,
                 om_pm10          = w.Pm10,
                 om_pm25          = w.Pm25,
-                // ── Modèle ──
                 aether_model     = w.AetherModel,
                 weather_model_id = w.WeatherModelId,
-                // ── Prévisions 48 h (horaire) ──
                 forecast         = (object?)forecastEl,
             });
         }).RequireRateLimiting("api");
@@ -239,7 +260,6 @@ public sealed class BridgeServer
         app.MapGet("/v1/media", (HttpContext _) =>
         {
             var m = _media.Get();
-            // Interpolation de position : même logique que le bridge Python
             double pos = m.Position;
             if (m.Playing && m.LastUpdate > 0)
             {
@@ -285,6 +305,8 @@ public sealed class BridgeServer
                 name   = "SysView Bridge v6",
                 uptime = Uptime(now - _startTime),
                 port   = PORT,
+                total_requests = _totalRequests,
+                rate_limit_hits = _rateLimitHits,
                 modules = new {
                     lhm     = snap.LhmOnline   ? "ok" : "offline",
                     weather = w.Temp.HasValue  ? "ok" : "pending",
@@ -312,17 +334,21 @@ public sealed class BridgeServer
             try
             {
                 var d = await JsonSerializer.DeserializeAsync<JsonElement>(ctx.Request.Body);
-                _media.Update(
-                    title    : d.TryGetProperty("title",     out var t)  ? t.GetString()  ?? "" : "",
-                    artist   : d.TryGetProperty("artist",    out var a)  ? a.GetString()  ?? "" : "",
-                    playing  : d.TryGetProperty("playing",   out var pl) && pl.GetBoolean(),
-                    position : d.TryGetProperty("position",  out var po) ? po.GetDouble() : 0.0,
-                    duration : d.TryGetProperty("duration",  out var du) ? du.GetDouble() : 0.0,
-                    thumbUrl : d.TryGetProperty("thumb_url", out var th) ? th.GetString() ?? "" : ""
-                );
+                string title  = d.TryGetProperty("title",     out var t)  ? t.GetString()  ?? "" : "";
+                string artist = d.TryGetProperty("artist",    out var a)  ? a.GetString()  ?? "" : "";
+                bool   play   = d.TryGetProperty("playing",   out var pl) && pl.GetBoolean();
+                double pos    = d.TryGetProperty("position",  out var po) ? po.GetDouble() : 0.0;
+                double dur    = d.TryGetProperty("duration",  out var du) ? du.GetDouble() : 0.0;
+                string thumb  = d.TryGetProperty("thumb_url", out var th) ? th.GetString() ?? "" : "";
+
+                _media.Update(title, artist, play, pos, dur, thumb);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 400); }
+            catch (Exception ex)
+            {
+                Logger.Error("Bridge", "POST /v1/media — erreur de désérialisation", ex);
+                return Results.Json(new { error = ex.Message }, statusCode: 400);
+            }
         }).RequireRateLimiting("api");
 
         // ─────────────────────────────────────────────────────────────────────
@@ -335,15 +361,19 @@ public sealed class BridgeServer
                 var d       = await JsonSerializer.DeserializeAsync<JsonElement>(ctx.Request.Body);
                 var changed = new List<string>();
 
+                Logger.Info("Bridge", $"POST /v1/config reçu");
+
                 // ── Ville → géocodage asynchrone ──────────────────────────
                 if (d.TryGetProperty("city", out var cp) && cp.GetString() is { Length: > 0 } city)
                 {
                     changed.Add("city");
+                    Logger.Info("Bridge", $"  city=\"{city}\" → géocodage asynchrone...");
                     _cfg.Update(city: city);
                     _ = Task.Run(async () => {
                         var geo = await _weather.GeocodeAsync(city);
                         if (geo.HasValue)
                         {
+                            Logger.Info("Bridge", $"  Géocodage résolu : {geo.Value.City} ({geo.Value.Lat}, {geo.Value.Lon})");
                             _cfg.Update(lat: geo.Value.Lat, lon: geo.Value.Lon, city: geo.Value.City);
                             _weather.TriggerRefresh();
                         }
@@ -352,28 +382,47 @@ public sealed class BridgeServer
 
                 if (d.TryGetProperty("weather_interval_min", out var wi))
                 {
+                    Logger.Info("Bridge", $"  weather_interval_min={wi.GetInt32()}");
                     _cfg.Update(intervalMin: wi.GetInt32());
                     changed.Add("weather_interval_min");
                     _weather.TriggerRefresh();
                 }
 
                 if (d.TryGetProperty("network_iface", out var ni))
-                { _cfg.Update(netIface: ni.GetString()); changed.Add("network_iface"); }
+                {
+                    Logger.Info("Bridge", $"  network_iface={ni.GetString()}");
+                    _cfg.Update(netIface: ni.GetString());
+                    changed.Add("network_iface");
+                }
 
                 if (d.TryGetProperty("lhm_enabled", out var le))
-                { _cfg.Update(lhmEnabled: le.GetBoolean()); changed.Add("lhm_enabled"); }
+                {
+                    Logger.Info("Bridge", $"  lhm_enabled={le.GetBoolean()}");
+                    _cfg.Update(lhmEnabled: le.GetBoolean());
+                    changed.Add("lhm_enabled");
+                }
 
-                // ── Modèle météo (ex-Aether weather_model) ────────────────
+                // ── Modèle météo ──────────────────────────────────────────
                 if (d.TryGetProperty("weather_model", out var wm) && wm.GetString() is { } wmv)
                 {
+                    Logger.Info("Bridge", $"  weather_model={wmv}");
                     _cfg.Update(weatherModel: wmv);
                     changed.Add("weather_model");
                     _weather.TriggerRefresh();
                 }
 
+                if (changed.Count > 0)
+                    Logger.Info("Bridge", $"  Config mise à jour : {string.Join(", ", changed)}");
+                else
+                    Logger.Debug("Bridge", "  POST /v1/config sans changement connu");
+
                 return Results.Json(new { ok = true, updated = changed });
             }
-            catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 400); }
+            catch (Exception ex)
+            {
+                Logger.Error("Bridge", "POST /v1/config — erreur", ex);
+                return Results.Json(new { error = ex.Message }, statusCode: 400);
+            }
         }).RequireRateLimiting("config");
 
         // ─────────────────────────────────────────────────────────────────────
@@ -395,14 +444,19 @@ public sealed class BridgeServer
             return Results.Json(new { current, resolved, models = list });
         }).RequireRateLimiting("api");
 
+        Logger.Info("Bridge", $"Démarrage du serveur HTTP sur http://127.0.0.1:{PORT}");
+        Logger.Info("Bridge", "Endpoints : GET /v1/health  /v1/perf  /v1/weather  /v1/media  /v1/status  /v1/models");
+        Logger.Info("Bridge", "Endpoints : POST /v1/media  /v1/config");
+
         await app.RunAsync(ct);
+
+        Logger.Info("Bridge", "Serveur HTTP arrêté");
     }
 
     // ─── Page HTML dark-theme pour les navigateurs ────────────────────────────
 
     private static string BrowserHtml(string path, string json)
     {
-        // Le JSON est sérialisé en chaîne JS pour être passé au syntax highlighter
         var jsonJs = JsonSerializer.Serialize(json);
 
         return $$"""
@@ -446,7 +500,6 @@ public sealed class BridgeServer
                 });
               }
               document.getElementById('out').innerHTML=hi(esc(raw));
-              // Marquer le lien actif
               var cur='{{path}}';
               document.querySelectorAll('nav a').forEach(function(a){
                 if(a.getAttribute('href')===cur)a.classList.add('cur');
