@@ -87,6 +87,47 @@ public sealed class BridgeServer
 
         var app = builder.Build();
 
+        // ── Rendu HTML pour les navigateurs ───────────────────────────────────
+        // Brave/Chrome en dark mode affiche le JSON en texte sombre sur fond noir.
+        // Ce middleware intercepte les requêtes avec Accept:text/html et enveloppe
+        // la réponse JSON dans une page stylisée avec syntax highlighting.
+        // Les clients API (WE, extension, PowerShell) reçoivent du JSON pur.
+        app.Use(async (ctx, next) =>
+        {
+            bool isBrowser = ctx.Request.Headers.Accept.ToString().Contains("text/html");
+            if (!isBrowser) { await next(ctx); return; }
+
+            var origBody = ctx.Response.Body;
+            using var buf = new MemoryStream();
+            ctx.Response.Body = buf;
+
+            await next(ctx);
+
+            buf.Position = 0;
+            var body = await new StreamReader(buf).ReadToEndAsync();
+            ctx.Response.Body = origBody;
+
+            if (ctx.Response.ContentType?.StartsWith("application/json") == true)
+            {
+                // Formater le JSON avec indentation
+                string pretty = body;
+                try {
+                    var el = JsonSerializer.Deserialize<JsonElement>(body);
+                    pretty = JsonSerializer.Serialize(el, new JsonSerializerOptions { WriteIndented = true });
+                } catch { }
+
+                var html = BrowserHtml(ctx.Request.Path, pretty);
+                ctx.Response.ContentType   = "text/html; charset=utf-8";
+                ctx.Response.ContentLength = null;
+                ctx.Response.Headers.Remove("Content-Length");
+                await ctx.Response.WriteAsync(html);
+            }
+            else
+            {
+                await origBody.WriteAsync(buf.ToArray());
+            }
+        });
+
         app.UseCors();
         app.UseRateLimiter();
 
@@ -355,5 +396,65 @@ public sealed class BridgeServer
         }).RequireRateLimiting("api");
 
         await app.RunAsync(ct);
+    }
+
+    // ─── Page HTML dark-theme pour les navigateurs ────────────────────────────
+
+    private static string BrowserHtml(string path, string json)
+    {
+        // Le JSON est sérialisé en chaîne JS pour être passé au syntax highlighter
+        var jsonJs = JsonSerializer.Serialize(json);
+
+        return $$"""
+            <!DOCTYPE html>
+            <html lang="fr">
+            <head>
+            <meta charset="UTF-8">
+            <title>SysView Bridge — {{path}}</title>
+            <style>
+            *{box-sizing:border-box;margin:0;padding:0}
+            body{background:#0d1117;color:#c9d1d9;font-family:'Consolas','Monaco',monospace;padding:24px;min-height:100vh}
+            h1{color:#58a6ff;font-size:13px;font-weight:400;letter-spacing:2px;text-transform:uppercase;margin-bottom:16px}
+            nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+            nav a{color:#8b949e;text-decoration:none;font-size:11px;padding:3px 10px;border:1px solid #30363d;border-radius:12px;transition:all .15s}
+            nav a:hover,nav a.cur{background:#21262d;color:#c9d1d9;border-color:#58a6ff}
+            pre{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;font-size:13px;line-height:1.65;overflow:auto;white-space:pre-wrap;word-break:break-all}
+            .k{color:#79c0ff}.s{color:#a5d6ff}.n{color:#ffa657}.b{color:#ff7b72}.z{color:#6e7681;font-style:italic}
+            </style>
+            </head>
+            <body>
+            <h1>◈ SysView Bridge &mdash; {{path}}</h1>
+            <nav>
+              <a href="/v1/health">health</a>
+              <a href="/v1/status">status</a>
+              <a href="/v1/perf">perf</a>
+              <a href="/v1/weather">weather</a>
+              <a href="/v1/media">media</a>
+              <a href="/v1/models">models</a>
+            </nav>
+            <pre id="out"></pre>
+            <script>
+            (function(){
+              var raw={{jsonJs}};
+              function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+              function hi(s){
+                return s.replace(/("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(?:true|false)\b|\bnull\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,function(m){
+                  if(/^"/.test(m)) return '<span class="'+(/:$/.test(m)?'k':'s')+'">'+esc(m)+'</span>';
+                  if(/true|false/.test(m)) return '<span class="b">'+m+'</span>';
+                  if(/null/.test(m)) return '<span class="z">'+m+'</span>';
+                  return '<span class="n">'+m+'</span>';
+                });
+              }
+              document.getElementById('out').innerHTML=hi(esc(raw));
+              // Marquer le lien actif
+              var cur='{{path}}';
+              document.querySelectorAll('nav a').forEach(function(a){
+                if(a.getAttribute('href')===cur)a.classList.add('cur');
+              });
+            })();
+            </script>
+            </body>
+            </html>
+            """;
     }
 }
