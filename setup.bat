@@ -71,7 +71,7 @@ if not exist "!_BASE!\" (
 )
 
 if exist "!_DEST!\" (
-    echo  [AVERT] SysView V6 est deja installe.
+    call :log "[AVERT] SysView V6 est deja installe -- mise a jour."
     echo  Les fichiers seront mis a jour ^(runtime_config.json conserve, Aether retelecharge^).
     echo.
     set /p "_OK=  Continuer ? [O / N] : "
@@ -216,8 +216,8 @@ if not exist "!_HW_PROJ!" (
     goto :fail
 )
 
-echo  Compilation en cours ^(premiere fois ~2-3 min -- NuGet + build^)...
-"!_DOTNET!" publish "!_HW_PROJ!" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none --nologo -v quiet >> "%_LOGFILE%" 2>&1
+call :log "[2/6] Compilation en cours ^(premiere fois ~2-3 min -- NuGet + build^)..."
+"!_DOTNET!" publish "!_HW_PROJ!" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none --nologo -v minimal >> "%_LOGFILE%" 2>&1
 if errorlevel 1 (
     call :log "[ERREUR] Compilation SysViewHardware echouee."
     echo  Verifiez que le projet est intact : !_HW_PROJ!
@@ -232,29 +232,28 @@ call :log "[OK] SysViewHardware.exe compile (autonome)."
 
 :hw_startup
 :: --- Demarrage automatique avec privileges admin via Task Scheduler ---
-echo  Demarrage automatique ^(admin^) : configuration...
-schtasks /query /tn "SysViewHardware" >nul 2>&1
+call :log "[2/6] Demarrage automatique (admin) : configuration..."
+schtasks /query /tn "SysViewHardware" >> "%_LOGFILE%" 2>&1
 if not errorlevel 1 (
     call :log "[INFO] Tache planifiee SysViewHardware deja presente."
     goto :hw_launch
 )
-schtasks /create /tn "SysViewHardware" /tr "\"!_HW_EXE!\"" /sc ONLOGON /rl HIGHEST /f >nul 2>&1
+schtasks /create /tn "SysViewHardware" /tr "\"!_HW_EXE!\"" /sc ONLOGON /rl HIGHEST /f >> "%_LOGFILE%" 2>&1
 if not errorlevel 1 (
     call :log "[OK] Tache planifiee : SysViewHardware demarre au login avec droits admin."
     goto :hw_launch
 )
 :: Fallback sans droits admin
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "SysViewHardware" /t REG_SZ /d "\"!_HW_EXE!\"" /f >nul 2>&1
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "SysViewHardware" /t REG_SZ /d "\"!_HW_EXE!\"" /f >> "%_LOGFILE%" 2>&1
 call :log "[AVERT] Tache planifiee impossible (droits insuffisants) -- demarrage simple configure."
 echo  Pour les capteurs : clic droit "Executer en tant qu'administrateur".
 
 :hw_launch
-echo  Lancement de SysViewHardware ^(sans UAC via tache planifiee^)...
-schtasks /run /tn "SysViewHardware" >nul 2>&1
+call :log "[2/6] Lancement de SysViewHardware (sans UAC via tache planifiee)..."
+schtasks /run /tn "SysViewHardware" >> "%_LOGFILE%" 2>&1
 if errorlevel 1 (
-    rem Tache planifiee indisponible -- fallback avec UAC
-    echo  ^(tache planifiee indisponible -- UAC necessaire^)
-    powershell -NoProfile -Command "Start-Process '!_HW_EXE!' -Verb RunAs"
+    call :log "[AVERT] Tache planifiee indisponible -- lancement avec UAC."
+    powershell -NoProfile -Command "Start-Process '!_HW_EXE!' -Verb RunAs" >> "%_LOGFILE%" 2>&1
 )
 call :log "[OK] SysViewHardware lance (port 8086)."
 echo.
@@ -263,12 +262,10 @@ echo.
 :: =========================================================
 call :log "[3/6] Verification de Python..."
 echo ---------------------------------------------------------
-python --version >nul 2>&1
+python --version >> "%_LOGFILE%" 2>&1
 if not errorlevel 1 goto :have_python
 
-echo  Python introuvable -- telechargement automatique...
-echo  (quelques minutes selon votre connexion)
->> "%_LOGFILE%" echo [%TIME:~0,8%] Python absent -- telechargement...
+call :log "[3/6] Python introuvable -- telechargement automatique (quelques minutes)..."
 powershell -NoProfile -ExecutionPolicy Bypass -Command "& { [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; $r=(Invoke-WebRequest 'https://www.python.org/downloads/' -UseBasicParsing -ErrorAction Stop).Content; $v=([regex]'Download Python (\d+\.\d+\.\d+)').Match($r).Groups[1].Value; if(!$v){throw 'Version introuvable'}; Write-Host('  -> Python '+$v); $f=$env:TEMP+'\pysetup.exe'; Invoke-WebRequest('https://www.python.org/ftp/python/'+$v+'/python-'+$v+'-amd64.exe') -OutFile $f -UseBasicParsing -ErrorAction Stop; Start-Process -Wait $f '/quiet InstallAllUsers=0 PrependPath=1 Include_test=0'; Remove-Item $f -ErrorAction SilentlyContinue }" >> "%_LOGFILE%" 2>&1
 if errorlevel 1 (
     echo.
@@ -302,10 +299,10 @@ echo.
 :: =========================================================
 call :log "[4/6] Installation des paquets Python (bridge + Aether)..."
 echo ---------------------------------------------------------
-echo  Mise a jour de pip...
-"!_PY!" -m pip install --upgrade --quiet pip >> "%_LOGFILE%" 2>&1
-echo  Installation des paquets...
-"!_PY!" -m pip install --quiet fastapi "uvicorn[standard]" requests psutil slowapi httpx python-multipart "pydantic>=2.7.0" >> "%_LOGFILE%" 2>&1
+call :log "[4/6] Mise a jour de pip..."
+"!_PY!" -m pip install --upgrade pip >> "%_LOGFILE%" 2>&1
+call :log "[4/6] Installation des paquets bridge..."
+"!_PY!" -m pip install fastapi "uvicorn[standard]" requests psutil slowapi httpx python-multipart "pydantic>=2.7.0" >> "%_LOGFILE%" 2>&1
 if errorlevel 1 (
     call :log "[ERREUR] pip install a echoue."
     pause & exit /b 1
@@ -324,7 +321,7 @@ echo.
 call :log "[5/6] Installation d'Aether (proxy Open-Meteo)..."
 echo ---------------------------------------------------------
 if not exist "!_AETHER!\main.py" (
-    echo  Telechargement d'Aether depuis GitHub...
+    call :log "[5/6] Telechargement d'Aether depuis GitHub..."
     set "_AZ=%TEMP%\aether_dl.zip"
     set "_AT=%TEMP%\aether_tmp"
     powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest 'https://github.com/Mrtt555/Aether/archive/refs/heads/main.zip' -OutFile '!_AZ!' -UseBasicParsing -ErrorAction Stop" >> "%_LOGFILE%" 2>&1
@@ -341,10 +338,19 @@ if not exist "!_AETHER!\main.py" (
 ) else (
     call :log "[INFO] Aether deja present -- paquets mis a jour uniquement."
 )
-"!_PY!" -m pip install --quiet -r "!_AETHER!\requirements.txt" >> "%_LOGFILE%" 2>&1
-if errorlevel 1 (
-    call :log "[ERREUR] Paquets Aether echec."
+if not defined _PY (
+    call :log "[ERREUR] Python introuvable a l'etape Aether -- etape 3 n'a pas abouti."
     pause & exit /b 1
+)
+if exist "!_AETHER!\requirements.txt" (
+    call :log "[5/6] Installation des paquets Aether..."
+    "!_PY!" -m pip install -r "!_AETHER!\requirements.txt" >> "%_LOGFILE%" 2>&1
+    if errorlevel 1 (
+        call :log "[ERREUR] Paquets Aether echec -- details dans le log."
+        pause & exit /b 1
+    )
+) else (
+    call :log "[INFO] Pas de requirements.txt dans Aether -- paquets ignores."
 )
 call :log "[OK] Aether pret -- interface sur http://127.0.0.1:8001"
 echo.
@@ -371,20 +377,20 @@ echo  Verification des ports 5001 et 8001...
 set "_PORT_BUSY=0"
 
 if exist "!_API!\bridge.pid" (
-    for /f "usebackq tokens=*" %%i in ("!_API!\bridge.pid") do taskkill /PID %%i /F /T >nul 2>&1
-    del "!_API!\bridge.pid" >nul 2>&1
+    for /f "usebackq tokens=*" %%i in ("!_API!\bridge.pid") do taskkill /PID %%i /F /T >> "%_LOGFILE%" 2>&1
+    del "!_API!\bridge.pid" >> "%_LOGFILE%" 2>&1
 )
 for /f "tokens=5" %%P in ('netstat -ano 2^>nul ^| findstr ":5001 " ^| findstr "LISTENING"') do (
     if not "%%P"=="0" (
         call :log "[INFO] port 5001 occupe (PID %%P) -- arret..."
-        taskkill /PID %%P /F /T >nul 2>&1
+        taskkill /PID %%P /F /T >> "%_LOGFILE%" 2>&1
         set "_PORT_BUSY=1"
     )
 )
 for /f "tokens=5" %%P in ('netstat -ano 2^>nul ^| findstr ":8001 " ^| findstr "LISTENING"') do (
     if not "%%P"=="0" (
         call :log "[INFO] port 8001 occupe (PID %%P) -- arret..."
-        taskkill /PID %%P /F /T >nul 2>&1
+        taskkill /PID %%P /F /T >> "%_LOGFILE%" 2>&1
         set "_PORT_BUSY=1"
     )
 )
@@ -397,10 +403,10 @@ if "!_PORT_BUSY!"=="1" (
 echo.
 
 :: Lancer le bridge (demarre Aether en sous-processus)
-echo  Lancement du bridge + Aether...
+call :log "[6/6] Lancement du bridge + Aether (SysViewBridge.pyw)..."
 start "" "!_PYW!" "!_API!\SysViewBridge.pyw"
 
-echo  Attente du demarrage...
+call :log "[6/6] Attente du demarrage bridge (max 15 s)..."
 set "_WAIT=0"
 :wait_loop
 ping -n 3 127.0.0.1 >nul
@@ -441,7 +447,7 @@ echo.
 >> "%_LOGFILE%" echo [%TIME:~0,8%] Setup termine.
 >> "%_LOGFILE%" echo [%TIME:~0,8%] ================================================
 if not exist "!_DEST!\logs" mkdir "!_DEST!\logs"
-copy /y "%_LOGFILE%" "!_DEST!\logs\setup.log" >nul 2>&1
+copy /y "%_LOGFILE%" "!_DEST!\logs\setup.log" >> "%_LOGFILE%" 2>&1
 echo  Log : !_DEST!\logs\setup.log
 
 :: =========================================================
@@ -491,7 +497,7 @@ goto :eof
 echo.
 >> "%_LOGFILE%" echo [%TIME:~0,8%] [ECHEC] Setup interrompu.
 if not exist "!_DEST!\logs" mkdir "!_DEST!\logs" >nul 2>&1
-copy /y "%_LOGFILE%" "!_DEST!\logs\setup.log" >nul 2>&1
+copy /y "%_LOGFILE%" "!_DEST!\logs\setup.log" >> "%_LOGFILE%" 2>&1
 endlocal
 pause
 exit /b 1
