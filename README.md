@@ -23,7 +23,7 @@ Windows 10 / 11 x64 — Wallpaper Engine requis — aucune dépendance Python
 └────────────────────────┬─────────────────────────────────────────┘
                          │ HTTP 127.0.0.1:5001
 ┌────────────────────────▼─────────────────────────────────────────┐
-│                SysViewManager.exe  (Admin — tâche planifiée)      │
+│                SysViewManager.exe  (Admin — tâche planifiée)     │
 │                                                                  │
 │  ┌──────────────────┐  ┌─────────────────────────────────────┐   │
 │  │  BridgeServer    │  │  HardwareService (LHM)              │   │
