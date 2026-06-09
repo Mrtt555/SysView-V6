@@ -2,6 +2,7 @@
 // RuntimeConfig — %AppData%\SysViewManager\runtime_config.json
 // Migration automatique depuis l'ancien API/runtime_config.json.
 // =============================================================
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -85,7 +86,7 @@ public sealed class RuntimeConfig
         if (!File.Exists(_path))
         {
             Logger.Info("Config", "Fichier absent — valeurs par défaut utilisées");
-            Logger.Info("Config", $"  lat={Lat} lon={Lon} ville={City} intervalle={WeatherIntervalMin}min modèle={WeatherModel} réseau={NetworkIface}");
+            Logger.Info("Config", $"  lat={G(Lat)} lon={G(Lon)} ville={City} intervalle={WeatherIntervalMin}min modèle={WeatherModel} réseau={NetworkIface}");
             return;
         }
 
@@ -112,9 +113,9 @@ public sealed class RuntimeConfig
             }
 
             Logger.Info("Config", "Config chargée :");
-            Logger.Info("Config", $"  ville={City}  lat={Lat}  lon={Lon}");
+            Logger.Info("Config", $"  ville={City}  lat={G(Lat)}  lon={G(Lon)}");
             Logger.Info("Config", $"  météo : intervalle={WeatherIntervalMin}min  modèle={WeatherModel}");
-            Logger.Info("Config", $"  réseau={NetworkIface}  lhm={LhmEnabled}");
+            Logger.Info("Config", $"  réseau={NetworkIface}  lhm={LhmEnabled.ToString().ToLower()}");
         }
         catch (Exception ex)
         {
@@ -179,4 +180,9 @@ public sealed class RuntimeConfig
             Logger.Warn("Config", $"Migration échouée : {ex.Message}");
         }
     }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>Formate un double avec la culture invariante (point décimal) pour les logs.</summary>
+    private static string G(double v) => v.ToString("G", CultureInfo.InvariantCulture);
 }

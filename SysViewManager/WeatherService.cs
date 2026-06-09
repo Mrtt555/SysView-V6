@@ -194,10 +194,10 @@ public sealed class WeatherService : IDisposable
                     fail = 0;
                     ok   = true;
 
-                    Logger.Info("Weather", $"  Résultat : {data.Temp}°C  ressenti={data.FeelsLike}°C  humidité={data.Humidity}%");
-                    Logger.Info("Weather", $"  Vent     : {data.Wind} km/h (rafales {data.WindGusts} km/h)  dir={data.WindDir}°");
-                    Logger.Info("Weather", $"  UV={data.Uv}  nuages={data.CloudCover}%  pluie={data.Precip}mm ({data.PrecipProb}%)");
-                    Logger.Info("Weather", $"  Air      : AQI={data.Aqi} ({data.AqiLabel})  pollen={data.Pollen} ({data.PollenLabel})");
+                    Logger.Info("Weather", $"  Résultat : {F(data.Temp)}°C  ressenti={F(data.FeelsLike)}°C  humidité={F(data.Humidity)}%");
+                    Logger.Info("Weather", $"  Vent     : {F(data.Wind)} km/h (rafales {F(data.WindGusts)} km/h)  dir={data.WindDir?.ToString() ?? "—"}°");
+                    Logger.Info("Weather", $"  UV={data.Uv?.ToString("F1") ?? "—"}  nuages={data.CloudCover?.ToString() ?? "—"}%  pluie={data.Precip?.ToString("F1") ?? "—"}mm ({data.PrecipProb?.ToString() ?? "—"}%)");
+                    Logger.Info("Weather", $"  Air      : AQI={data.Aqi?.ToString() ?? "—"} ({data.AqiLabel})  PM10={data.Pm10?.ToString() ?? "—"}  pollen={F(data.Pollen)} ({data.PollenLabel})");
                     Logger.Info("Weather", $"  Durée    : {sw.ElapsedMilliseconds} ms");
                 }
                 catch (Exception ex)
@@ -406,7 +406,10 @@ public sealed class WeatherService : IDisposable
     /// OBLIGATOIRE pour les URLs Open-Meteo — sinon la locale fr-FR produit "50,78628"
     /// au lieu de "50.78628", ce qui cause une erreur 400 "Latitude out of range".
     /// </summary>
-    private static string G(double v) => v.ToString("G", CultureInfo.InvariantCulture);
+    private static string G(double v)  => v.ToString("G",   CultureInfo.InvariantCulture);
+
+    /// <summary>Formate une valeur nullable pour les logs (point décimal, "—" si null).</summary>
+    private static string F(double? v) => v.HasValue ? v.Value.ToString("F1", CultureInfo.InvariantCulture) : "—";
 
     private static T? N<T>(JsonNode? node) where T : struct
     {
