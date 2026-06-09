@@ -6,6 +6,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from pydantic import BaseModel
+import asyncio
 import httpx
 import json
 from pathlib import Path
@@ -118,18 +119,28 @@ DEFAULT_CONFIG = {
 
 CONFIG_PATH = Path("config.json")
 
+# Cache module-level — évite une lecture disque à chaque requête rate-limited.
+# Invalidé par save_config() à chaque POST /api/config.
+_cfg_cache: dict | None = None
+
 
 def load_config() -> dict:
+    global _cfg_cache
+    if _cfg_cache is not None:
+        return _cfg_cache
     if not CONFIG_PATH.exists():
         save_config(DEFAULT_CONFIG)
-        return DEFAULT_CONFIG.copy()
+        return _cfg_cache  # save_config a déjà mis à jour le cache
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+        _cfg_cache = json.load(f)
+    return _cfg_cache
 
 
 def save_config(cfg: dict) -> None:
+    global _cfg_cache
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)
+    _cfg_cache = cfg   # met à jour le cache après écriture
 
 
 limiter = Limiter(key_func=get_remote_address)
@@ -266,12 +277,13 @@ async def _build_live_response(cfg: dict) -> dict:
         model_id = "best_match"
     model_info = WEATHER_MODELS[model_id]
 
-    weather_data: dict = {}
-    forecast_data: dict = {}
-    air_data: dict = {}
-
+    # Les trois requêtes Open-Meteo sont indépendantes — on les lance en parallèle
+    # avec asyncio.gather() pour réduire la latence de L1+L2+L3 à max(L1,L2,L3).
     async with httpx.AsyncClient(timeout=15.0) as client:
-        if weather_params:
+
+        async def _fetch_current() -> dict:
+            if not weather_params:
+                return {}
             r = await client.get(
                 "https://api.open-meteo.com/v1/forecast",
                 params={
@@ -282,9 +294,12 @@ async def _build_live_response(cfg: dict) -> dict:
                 },
             )
             r.raise_for_status()
-            weather_data = r.json()
+            return r.json()
 
-            r2 = await client.get(
+        async def _fetch_forecast() -> dict:
+            if not weather_params:
+                return {}
+            r = await client.get(
                 "https://api.open-meteo.com/v1/forecast",
                 params={
                     "latitude": lat, "longitude": lon,
@@ -293,10 +308,12 @@ async def _build_live_response(cfg: dict) -> dict:
                     "timezone": "auto", "forecast_days": 2,
                 },
             )
-            if r2.status_code == 200:
-                forecast_data = r2.json()
+            r.raise_for_status()
+            return r.json()
 
-        if air_params:
+        async def _fetch_air() -> dict:
+            if not air_params:
+                return {}
             r = await client.get(
                 "https://air-quality-api.open-meteo.com/v1/air-quality",
                 params={
@@ -306,7 +323,11 @@ async def _build_live_response(cfg: dict) -> dict:
                 },
             )
             r.raise_for_status()
-            air_data = r.json()
+            return r.json()
+
+        weather_data, forecast_data, air_data = await asyncio.gather(
+            _fetch_current(), _fetch_forecast(), _fetch_air()
+        )
 
     return {
         "config": {

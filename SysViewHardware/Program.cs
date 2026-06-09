@@ -1,15 +1,12 @@
-﻿// ============================================================
+// ============================================================
 // SysViewHardware v1.0
 // Service HTTP passif — capteurs matériel via LibreHardwareMonitorLib
 //
 //   GET http://127.0.0.1:8086/data.json   → snapshot JSON
 //   GET http://127.0.0.1:8086/health      → {"status":"ok","version":"1.0"}
 //
-// Clés JSON identiques à la sortie de _lhm_parse() dans SysViewBridge
-// → aucune modification de hardware_loop() nécessaire.
-//
 // Droits : requireAdministrator (app.manifest)
-//   → nécessaire pour temp CPU (MSR), temp GPU (ADL / NVML)
+//   → nécessaire pour temp CPU/GPU (PawnIO driver, LHM 0.9.6+)
 // ============================================================
 
 using System.Net;
@@ -17,7 +14,7 @@ using System.Text;
 using System.Globalization;
 using LibreHardwareMonitor.Hardware;
 
-// ─── Snapshot immuable ────────────────────────────────────────────────────────
+// ─── Snapshot ────────────────────────────────────────────────────────────────
 
 sealed class Snap
 {
@@ -26,21 +23,18 @@ sealed class Snap
     public float?  gpu_temp, gpu_usage;
     public float?  vram_used, vram_total;   // MB
     public float?  ram_usage;               // %
-    public int     ram_used_mb, ram_total_mb; // MiB (depuis LHM Data sensors)
-    // Clés réseau identiques aux attentes du bridge (WiFi = net_dl_kb / net_ul_kb)
-    public double  net_dl_kb,     net_ul_kb;      // Wi-Fi  KB/s
-    public double  net_eth_dl_kb, net_eth_ul_kb;  // Ethernet KB/s
-    // Disques (DriveInfo — espace système de fichiers, valeurs en GiB)
+    public int     ram_used_mb, ram_total_mb;
+    public double  net_dl_kb,     net_ul_kb;
+    public double  net_eth_dl_kb, net_eth_ul_kb;
     public List<DiskEntry> disks = new();
 }
 
-// ─── Entrée disque ────────────────────────────────────────────────────────────
-
 sealed class DiskEntry
 {
-    public string letter  = "";
+    public string letter    = "";
     public double used_gb, total_gb, free_gb;
     public float  percent;
+    public bool   removable;   // true = USB/amovible, false = disque interne
 }
 
 // ─── Visitor LHM ─────────────────────────────────────────────────────────────
@@ -65,13 +59,12 @@ class Program
     const int    POLL_MS = 1000;
     static readonly CultureInfo IC = CultureInfo.InvariantCulture;
 
-    static Snap          _snap    = new();
-    static readonly object _mu   = new();
+    static Snap           _snap = new();
+    static readonly object _mu  = new();
     static readonly Updater _vis = new();
 
     static void Main()
     {
-        // ── Ouverture du matériel ─────────────────────────────────────────────
         var hw = new Computer
         {
             IsCpuEnabled     = true,
@@ -81,12 +74,17 @@ class Program
         };
 
         try   { hw.Open(); }
-        catch { return; }   // droits insuffisants — le bridge détectera l'absence
+        catch (Exception ex)
+        {
+            try { File.WriteAllText(
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "hw_error.log"),
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] hw.Open() failed:\n{ex}\n"); }
+            catch { }
+            Environment.Exit(1);
+        }
 
-        // ── Premier poll synchrone (évite réponse vide au démarrage) ─────────
         Poll(hw);
 
-        // ── Thread de polling en arrière-plan ─────────────────────────────────
         var t = new Thread(() =>
         {
             for (;;) { Thread.Sleep(POLL_MS); Poll(hw); }
@@ -94,12 +92,11 @@ class Program
         { IsBackground = true, Name = "hw-poll" };
         t.Start();
 
-        // ── Serveur HTTP ──────────────────────────────────────────────────────
         var lis = new HttpListener();
         lis.Prefixes.Add($"http://127.0.0.1:{PORT}/");
 
         try { lis.Start(); }
-        catch { hw.Close(); Environment.Exit(1); }   // port déjà occupé
+        catch { hw.Close(); Environment.Exit(1); }
 
         AppDomain.CurrentDomain.ProcessExit += (_, _) => { hw.Close(); lis.Stop(); };
 
@@ -110,12 +107,12 @@ class Program
                 var ctx = lis.GetContext();
                 ThreadPool.QueueUserWorkItem(_ => Serve(ctx));
             }
-            catch (HttpListenerException) { break; }
+            catch (HttpListenerException)  { break; }
             catch (ObjectDisposedException) { break; }
         }
     }
 
-    // ─── Lecture des capteurs ─────────────────────────────────────────────────
+    // ─── Polling ─────────────────────────────────────────────────────────────
 
     static void Poll(Computer hw)
     {
@@ -126,43 +123,46 @@ class Program
 
             foreach (var h in hw.Hardware)
             {
-                var sens = Flat(h);  // itère capteurs + sous-hardware
-
                 switch (h.HardwareType)
                 {
                     // ── CPU ───────────────────────────────────────────────────
                     case HardwareType.Cpu:
+                    {
                         s.cpu_name = h.Name;
-                        foreach (var x in sens)
+                        var sl = Flat(h).ToList();
+
+                        foreach (var x in sl)
                         {
                             string n = x.Name.ToLowerInvariant();
 
-                            // Température : priorité Package/Tdie/Tctl/Die, valeur > 0 obligatoire
-                            // (LHM peut retourner 0.0 si le driver MSR/SMU n'est pas encore prêt)
                             if (x.SensorType == SensorType.Temperature && s.cpu_temp == null
                                 && (x.Value ?? 0f) > 0f
-                                && (n.Contains("package") || n.Contains("tdie")
-                                    || n.Contains("tctl")  || n.Contains("cpu die")
-                                    || n.Contains("core (t")))
+                                && (n.Contains("package")   || n.Contains("tdie")
+                                    || n.Contains("tctl")   || n.Contains("cpu die")
+                                    || n.Contains("core (t") || n.Contains("ccd")
+                                    || n.Contains("average") || n.Contains("max")))
                                 s.cpu_temp = x.Value;
 
-                            // Charge CPU globale
                             if (x.SensorType == SensorType.Load && s.cpu_usage == null
                                 && n.Contains("total"))
                                 s.cpu_usage = x.Value;
                         }
-                        // Fallbacks : premier capteur > 0 du bon type
-                        s.cpu_temp  ??= FirstPositive(sens, SensorType.Temperature);
-                        s.cpu_usage ??= First(sens, SensorType.Load);
-                        break;
 
-                    // ── GPU (AMD / Nvidia / Intel Arc) ────────────────────────
+                        s.cpu_temp  ??= FirstPositive(sl, SensorType.Temperature);
+                        s.cpu_usage ??= First(sl, SensorType.Load);
+                        break;
+                    }
+
+                    // ── GPU ───────────────────────────────────────────────────
                     case HardwareType.GpuAmd:
                     case HardwareType.GpuNvidia:
                     case HardwareType.GpuIntel:
-                        if (s.gpu_name != null) break;   // premier GPU seulement
+                    {
+                        if (s.gpu_name != null) break;
                         s.gpu_name = h.Name;
-                        foreach (var x in sens)
+                        var gl = Flat(h).ToList();
+
+                        foreach (var x in gl)
                         {
                             string n = x.Name.ToLowerInvariant();
 
@@ -174,7 +174,6 @@ class Program
                                 && (n.Contains("core") || n.Contains("gpu")))
                                 s.gpu_usage = x.Value;
 
-                            // VRAM : SensorType.SmallData = MB
                             if (x.SensorType == SensorType.SmallData && s.vram_used == null
                                 && n.Contains("used") && n.Contains("memory"))
                                 s.vram_used = x.Value;
@@ -183,16 +182,20 @@ class Program
                                 && n.Contains("total") && n.Contains("memory"))
                                 s.vram_total = x.Value;
                         }
-                        s.gpu_temp  ??= First(sens, SensorType.Temperature);
-                        s.gpu_usage ??= First(sens, SensorType.Load);
+
+                        s.gpu_temp  ??= First(gl, SensorType.Temperature);
+                        s.gpu_usage ??= First(gl, SensorType.Load);
                         break;
+                    }
 
                     // ── RAM ───────────────────────────────────────────────────
                     case HardwareType.Memory:
-                        s.ram_usage = First(sens, SensorType.Load);
-                        // RAM absolue via SensorType.Data : "Memory Used" / "Memory Available" (GiB)
+                    {
+                        var ml = Flat(h).ToList();
+                        s.ram_usage = First(ml, SensorType.Load);
+
                         float? ramUsed = null, ramAvail = null;
-                        foreach (var x in sens)
+                        foreach (var x in ml)
                         {
                             if (x.SensorType != SensorType.Data) continue;
                             string n = x.Name.ToLowerInvariant();
@@ -201,25 +204,27 @@ class Program
                             if (ramAvail == null && n.Contains("memory") && n.Contains("available")
                                                  && !n.Contains("virtual")) ramAvail = x.Value;
                         }
-                        if (ramUsed  != null) s.ram_used_mb  = (int)(ramUsed.Value  * 1024f);
-                        if (ramUsed  != null && ramAvail != null)
+
+                        if (ramUsed != null) s.ram_used_mb = (int)(ramUsed.Value * 1024f);
+                        if (ramUsed != null && ramAvail != null)
                             s.ram_total_mb = (int)((ramUsed.Value + ramAvail.Value) * 1024f);
+
+                        // Fallback : calcule % depuis les valeurs absolues si Load manquant
+                        if (s.ram_usage == null && s.ram_total_mb > 0)
+                            s.ram_usage = MathF.Round((float)s.ram_used_mb / s.ram_total_mb * 100f, 1);
                         break;
+                    }
 
                     // ── Réseau ────────────────────────────────────────────────
                     case HardwareType.Network:
                     {
-                        // Détection Wi-Fi vs Ethernet par le nom du matériel
                         string hn   = h.Name.ToLowerInvariant();
                         bool   wifi = hn.Contains("wi-fi") || hn.Contains("wifi")
                                    || hn.Contains("wireless") || hn.Contains("wlan");
 
-                        foreach (var x in sens)
+                        foreach (var x in Flat(h))
                         {
                             if (x.SensorType != SensorType.Throughput) continue;
-
-                            // LHM Throughput = B/s → on divise par 1000 pour KB/s
-                            // (cohérent avec le bridge qui attend des KB/s)
                             double kbps = (double)(x.Value ?? 0f) / 1000.0;
                             string sn   = x.Name.ToLowerInvariant();
                             bool   dl   = sn.Contains("download") || sn.Contains("receive");
@@ -227,12 +232,12 @@ class Program
 
                             if (wifi)
                             {
-                                if (dl) s.net_dl_kb     += kbps;
+                                if (dl)      s.net_dl_kb += kbps;
                                 else if (ul) s.net_ul_kb += kbps;
                             }
                             else
                             {
-                                if (dl) s.net_eth_dl_kb     += kbps;
+                                if (dl)      s.net_eth_dl_kb += kbps;
                                 else if (ul) s.net_eth_ul_kb += kbps;
                             }
                         }
@@ -241,38 +246,39 @@ class Program
                 }
             }
 
-            // ── Disques C: à H: (espace système de fichiers via DriveInfo) ──────────
+            // ── Disques fixes + USB amovibles (C: → Z:, ignore A: B:) ────────
             foreach (var di in DriveInfo.GetDrives())
             {
                 try
                 {
-                    if (di.DriveType != DriveType.Fixed || !di.IsReady) continue;
+                    bool isFixed     = di.DriveType == DriveType.Fixed;
+                    bool isRemovable = di.DriveType == DriveType.Removable;
+                    if ((!isFixed && !isRemovable) || !di.IsReady) continue;
                     char lc = char.ToLowerInvariant(di.Name[0]);
-                    if (lc < 'c' || lc > 'h') continue;   // C: → H: uniquement
-                    double total = di.TotalSize          / 1_073_741_824.0;  // GiB → Go
+                    if (lc < 'c') continue;   // ignore A: B: (lecteurs disquette)
+                    double total = di.TotalSize          / 1_073_741_824.0;
                     double free  = di.AvailableFreeSpace / 1_073_741_824.0;
                     double used  = total - free;
                     s.disks.Add(new DiskEntry
                     {
-                        letter   = lc.ToString(),
-                        used_gb  = Math.Round(used,  2),
-                        total_gb = Math.Round(total, 2),
-                        free_gb  = Math.Round(free,  2),
-                        percent  = total > 0 ? MathF.Round((float)(used / total * 100.0), 1) : 0f,
+                        letter    = lc.ToString(),
+                        used_gb   = Math.Round(used,  2),
+                        total_gb  = Math.Round(total, 2),
+                        free_gb   = Math.Round(free,  2),
+                        percent   = total > 0 ? MathF.Round((float)(used / total * 100.0), 1) : 0f,
+                        removable = isRemovable,
                     });
                 }
-                catch { /* lecteur inaccessible ou non prêt — ignoré */ }
+                catch { }
             }
 
-            // Publication atomique du snapshot
             lock (_mu) _snap = s;
         }
-        catch { /* erreur capteur — ignorée, bridge détectera l'absence */ }
+        catch { }
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
-    /// <summary>Itère à plat sur tous les capteurs d'un hardware et de ses sous-hardware.</summary>
     static IEnumerable<ISensor> Flat(IHardware h)
     {
         foreach (var s in h.Sensors) yield return s;
@@ -281,7 +287,6 @@ class Program
                 yield return s;
     }
 
-    /// <summary>Valeur du premier capteur du type demandé, ou null.</summary>
     static float? First(IEnumerable<ISensor> sensors, SensorType type)
     {
         foreach (var s in sensors)
@@ -289,7 +294,6 @@ class Program
         return null;
     }
 
-    /// <summary>Valeur du premier capteur du type demandé dont la valeur est > 0, ou null.</summary>
     static float? FirstPositive(IEnumerable<ISensor> sensors, SensorType type)
     {
         foreach (var s in sensors)
@@ -303,7 +307,6 @@ class Program
     {
         try
         {
-            // CORS — SysViewBridge (localhost) et Wallpaper Engine (null origin)
             ctx.Response.Headers["Access-Control-Allow-Origin"]  = "*";
             ctx.Response.Headers["Access-Control-Allow-Methods"] = "GET";
 
@@ -312,25 +315,35 @@ class Program
 
             string path = ctx.Request.Url?.AbsolutePath ?? "/";
 
-            // ── GET /health ───────────────────────────────────────────────────
             if (path.Equals("/health", StringComparison.OrdinalIgnoreCase))
             { WriteJson(ctx, 200, "{\"status\":\"ok\",\"version\":\"1.0\"}"); return; }
 
-            // ── GET /data.json ────────────────────────────────────────────────
             if (!path.Equals("/data.json", StringComparison.OrdinalIgnoreCase))
             { ctx.Response.StatusCode = 404; ctx.Response.Close(); return; }
 
             Snap s;
             lock (_mu) s = _snap;
 
-            // Helpers de formatage avec culture invariante (point décimal)
             string F(float? v)  => v.HasValue ? v.Value.ToString("F1", IC) : "null";
             string D(double v)  => Math.Round(v, 1).ToString("F1", IC);
-            string J(string? v) => v == null ? "null"
-                : "\"" + v.Replace("\\", "\\\\").Replace("\"", "\\\"")
-                          .Replace("\r", "").Replace("\n", "") + "\"";
+            string J(string? v)
+            {
+                if (v == null) return "null";
+                var sb = new StringBuilder("\"");
+                foreach (char c in v)
+                {
+                    if      (c == '\\') sb.Append("\\\\");
+                    else if (c == '"' ) sb.Append("\\\"");
+                    else if (c == '\n') sb.Append("\\n");
+                    else if (c == '\r') sb.Append("\\r");
+                    else if (c == '\t') sb.Append("\\t");
+                    else if (c < ' '  ) sb.Append($"\\u{(int)c:x4}");
+                    else                sb.Append(c);
+                }
+                sb.Append('"');
+                return sb.ToString();
+            }
 
-            // JSON avec les clés exactement attendues par SysViewBridge
             string json =
                 "{\n" +
                 $"  \"cpu_name\":      {J(s.cpu_name)},\n" +
@@ -356,11 +369,9 @@ class Program
         }
         catch
         {
-            try { ctx.Response.Abort(); } catch { /* ignoré */ }
+            try { ctx.Response.Abort(); } catch { }
         }
     }
-
-    // ─── Sérialisation des disques ────────────────────────────────────────────
 
     static string DiskJson(List<DiskEntry> disks)
     {
@@ -373,7 +384,8 @@ class Program
               .Append($"\"used_gb\":{d.used_gb.ToString("F2", IC)},")
               .Append($"\"total_gb\":{d.total_gb.ToString("F2", IC)},")
               .Append($"\"free_gb\":{d.free_gb.ToString("F2", IC)},")
-              .Append($"\"percent\":{d.percent.ToString("F1", IC)}}}");
+              .Append($"\"percent\":{d.percent.ToString("F1", IC)},")
+              .Append($"\"removable\":{(d.removable ? "true" : "false")}}}");
             if (i < disks.Count - 1) sb.Append(',');
             sb.Append('\n');
         }
@@ -387,6 +399,6 @@ class Program
         ctx.Response.ContentType     = "application/json; charset=utf-8";
         ctx.Response.ContentLength64 = buf.Length;
         try   { ctx.Response.OutputStream.Write(buf, 0, buf.Length); }
-        finally { try { ctx.Response.Close(); } catch { /* ignoré */ } }
+        finally { try { ctx.Response.Close(); } catch { } }
     }
 }

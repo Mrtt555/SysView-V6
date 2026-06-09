@@ -1,0 +1,7 @@
+{
+  "weather_interval_min": 3,
+  "network_iface": "auto",
+  "city": "HALLUIN",
+  "lat": 50.78628,
+  "lon": 3.12611
+}

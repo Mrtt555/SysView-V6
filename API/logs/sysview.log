@@ -1,0 +1,25 @@
+=== SysView Bridge v6 — 2026-06-09 02:04:03 ===
+[2026-06-09 02:04:03] [INFO] [INIT        ]     === SysView Bridge v6 ===
+[2026-06-09 02:04:03] [INFO] [INIT        ]     psutil  : OK
+[2026-06-09 02:04:03] [INFO] [INIT        ]     media   : extension Chrome uniquement
+[2026-06-09 02:04:03] [INFO] [INIT        ]     LHM     : http://127.0.0.1:8086/data.json
+[2026-06-09 02:04:03] [INFO] [INIT        ]     Port    : 5001
+[2026-06-09 02:04:03] [INFO] [INIT        ]     Log     : C:\Program Files (x86)\Steam\steamapps\common\wallpaper_engine\projects\myprojects\SysView V6\API V3\logs\sysview.log
+[2026-06-09 02:04:03] [INFO] [INIT        ]     Config runtime chargée — intervalle=3min  ville=HALLUIN
+[2026-06-09 02:04:03] [INFO] [AETHER      ]     Démarré (PID 40280) — http://127.0.0.1:8001
+[2026-06-09 02:04:03] [INFO] [PERF        ]     Thread hardware démarré
+[2026-06-09 02:04:03] [INFO] [DISK        ]     Thread disques démarré
+[2026-06-09 02:04:03] [INFO] [WEATHER     ]     Thread météo démarré
+[2026-06-09 02:04:03] [INFO] [INIT        ]     Threads démarrés (hardware, disk, weather)
+[2026-06-09 02:04:03] [INFO] [SERVER      ]     Demarrage sur le port 5001...
+[2026-06-09 02:04:03] [INFO] [DISK        ]     C: 1.33To/2To (73.4%)
+[2026-06-09 02:04:03] [INFO] [DISK        ]     D: 228.90Go/447Go (51.2%)
+[2026-06-09 02:04:03] [INFO] [DISK        ]     E: 1.40To/2To (76.9%)
+[2026-06-09 02:04:03] [INFO] [DISK        ]     F: 38.72Go/115Go (33.8%)
+[2026-06-09 02:04:03] [INFO] [SERVER      ]     http://0.0.0.0:5001
+[2026-06-09 02:04:03] [INFO] [SERVER      ]     Docs : http://localhost:5001/docs
+[2026-06-09 02:04:08] [INFO] [AETHER      ]     Configuré → lat=50.78628 lon=3.12611 (HALLUIN)
+[2026-06-09 02:04:08] [INFO] [LHM         ]     SysViewHardware — OK
+[2026-06-09 02:04:09] [INFO] [WEATHER     ]     [Aether/Météo-France AROME France (1.3 km)] temp=11.0°C  code=1  vent=14.2km/h  prob_pluie=0%
+[2026-06-09 02:04:09] [INFO] [WEATHER     ]     [Aether] QAI=26 (Correct)  pollen=47.6 (Modere)
+[2026-06-09 02:04:09] [INFO] [WEATHER     ]     Prochain refresh dans 3min

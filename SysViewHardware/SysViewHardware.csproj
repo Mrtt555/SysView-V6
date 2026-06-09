@@ -9,14 +9,16 @@
 
     <!-- Manifest embarqué → invite UAC au lancement (droits admin requis) -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Icône visible dans le gestionnaire de tâches -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
 
     <!-- Build autonome : aucune dépendance runtime sur la machine cible -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <!-- Les DLLs natives (WinRing0, HidSharp…) sont extraites au premier
-         lancement dans %TEMP%\SysViewHardware — comportement normal LHM.  -->
+    <!-- PawnIO (driver signé WHQL) est installé via le Windows Driver Store
+         au premier lancement — ne nécessite pas Memory Integrity désactivé. -->
 
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -26,9 +28,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- LibreHardwareMonitorLib — capteurs CPU/GPU/RAM/Network/Storage    -->
-    <!-- https://www.nuget.org/packages/LibreHardwareMonitorLib             -->
-    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.4" />
+    <!-- LibreHardwareMonitorLib — capteurs CPU/GPU/RAM/Network/Storage       -->
+    <!-- https://www.nuget.org/packages/LibreHardwareMonitorLib               -->
+    <!-- 0.9.5+ remplace WinRing0 (non signé) par PawnIO (WHQL signé)         -->
+    <!-- → compatible Memory Integrity / Core Isolation de Windows 11          -->
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
   </ItemGroup>
 
 </Project>

@@ -415,6 +415,7 @@ def _load_runtime() -> None:
 _LHM_CACHE   = {}
 _LHM_CACHE_T = 0.0
 _LHM_ONLINE  = False
+_lhm_lock    = threading.Lock()   # protège _LHM_CACHE / _LHM_CACHE_T (TOCTOU)
 
 
 def _lhm_fetch() -> dict:
@@ -439,17 +440,26 @@ def _lhm_fetch() -> dict:
 
 
 def get_lhm() -> dict:
-    """Retourne les données capteurs. Cache 4 s (> timeout HTTP 3 s)."""
+    """Retourne les données capteurs. Cache 4 s (> timeout HTTP 3 s).
+
+    Thread-safe : le verrou _lhm_lock garantit qu'un seul thread déclenche
+    le fetch HTTP — les autres voient le timer avancé et retournent le cache.
+    """
     global _LHM_CACHE, _LHM_CACHE_T
     now = time.monotonic()
-    if now - _LHM_CACHE_T < 4.0:
-        return _LHM_CACHE
-    _LHM_CACHE_T = now   # avancer le timer même sur échec — évite de re-tenter
-                         # une requête bloquante à chaque tick de 500 ms
-    data = _lhm_fetch()
+    with _lhm_lock:
+        if now - _LHM_CACHE_T < 4.0:
+            return _LHM_CACHE
+        # Avancer le timer AVANT de libérer le lock : tout thread concurrent
+        # lira un timer "récent" et retournera le cache sans déclencher
+        # un deuxième fetch HTTP simultané.
+        _LHM_CACHE_T = now
+    data = _lhm_fetch()   # fetch sans lock (I/O, peut durer jusqu'à 3 s)
     if data:
-        _LHM_CACHE = data
-    return _LHM_CACHE
+        with _lhm_lock:
+            _LHM_CACHE = data
+    with _lhm_lock:
+        return _LHM_CACHE
 
 # ============================================================
 # THREAD HARDWARE
@@ -519,22 +529,24 @@ def hardware_loop():
                     )
 
             with perf_lock:
+                # Utiliser `x if x is not None else fallback` — l'opérateur `or`
+                # traite 0 / 0.0 comme falsy et remplacerait des valeurs valides.
                 PERF.update({
-                    "cpu_name":    lhm.get("cpu_name")  or PERF["cpu_name"],
-                    "cpu_usage":   round(float(cpu_usage or 0), 1),
-                    "cpu_temp":    lhm.get("cpu_temp"),
-                    "gpu_name":    lhm.get("gpu_name")  or PERF["gpu_name"],
-                    "gpu_usage":   round(float(lhm.get("gpu_usage") or 0), 1),
-                    "gpu_temp":    lhm.get("gpu_temp"),
-                    "vram_used":   int(lhm.get("vram_used")  or 0),
-                    "vram_total":  int(lhm.get("vram_total") or 0),
-                    "ram_usage":   round(lhm.get("ram_usage") or mem.percent, 1),
+                    "cpu_name":   lhm["cpu_name"] if lhm.get("cpu_name") is not None else PERF["cpu_name"],
+                    "cpu_usage":  round(float(cpu_usage if cpu_usage is not None else 0), 1),
+                    "cpu_temp":   lhm.get("cpu_temp"),
+                    "gpu_name":   lhm["gpu_name"] if lhm.get("gpu_name") is not None else PERF["gpu_name"],
+                    "gpu_usage":  round(float(v), 1) if (v := lhm.get("gpu_usage"))  is not None else 0.0,
+                    "gpu_temp":   lhm.get("gpu_temp"),
+                    "vram_used":  int(v) if (v := lhm.get("vram_used"))  is not None else 0,
+                    "vram_total": int(v) if (v := lhm.get("vram_total")) is not None else 0,
+                    "ram_usage":  round(v, 1)    if (v := lhm.get("ram_usage"))    is not None else round(mem.percent, 1),
                     # LHM en primaire (SysViewHardware Data sensors), psutil en fallback
-                    "ram_used_mb":  lhm.get("ram_used_mb")  or (mem.used  // (1024 * 1024)),
-                    "ram_total_mb": lhm.get("ram_total_mb") or (mem.total // (1024 * 1024)),
-                    "net_dl_kb":   round(dl_kb, 1),
-                    "net_ul_kb":   round(ul_kb, 1),
-                    "lhm_online":  _LHM_ONLINE,
+                    "ram_used_mb":  v if (v := lhm.get("ram_used_mb"))  is not None else (mem.used  // (1024 * 1024)),
+                    "ram_total_mb": v if (v := lhm.get("ram_total_mb")) is not None else (mem.total // (1024 * 1024)),
+                    "net_dl_kb":  round(dl_kb, 1),
+                    "net_ul_kb":  round(ul_kb, 1),
+                    "lhm_online": _LHM_ONLINE,
                 })
 
             _perf_count += 1
@@ -687,6 +699,7 @@ def weather_loop():
         ok = False
         try:
             r    = _req.get(f"{config.AETHER_URL}/api/live_data", timeout=15)
+            r.raise_for_status()   # lève HTTPError si 4xx/5xx avant de parser
             data = r.json()
 
             cu = data.get("weather",     {}).get("current", {})
@@ -760,9 +773,10 @@ def weather_loop():
                 WEATHER["om_feels_like"]   = cu.get("apparent_temperature")
                 WEATHER["om_humidity"]     = cu.get("relative_humidity_2m")
                 WEATHER["om_uv"]           = cu.get("uv_index")
-                WEATHER["om_precip"]       = round(float(precip if precip is not None else 0), 1)
+                # Garder None si absent — le frontend distingue "0 mm" de "donnée indisponible"
+                WEATHER["om_precip"]       = round(float(precip), 1) if precip is not None else None
                 WEATHER["om_precip_prob"]  = int(precip_prob) if precip_prob is not None else None
-                WEATHER["om_wind"]         = round(float(wind   if wind   is not None else 0), 1)
+                WEATHER["om_wind"]         = round(float(wind),   1) if wind   is not None else None
                 WEATHER["om_wind_dir"]     = cu.get("wind_direction_10m")
                 WEATHER["om_weather_code"] = code
                 WEATHER["om_aqi"]          = aqi
@@ -1006,6 +1020,7 @@ async def set_config(request: Request):
                             RUNTIME["lat"] = lat_new
                             RUNTIME["lon"] = lon_new
                         _aether_configure(lat_new, lon_new, city=geo_name)
+                        _save_runtime()   # persiste les nouvelles coords avant le refresh météo
                         _weather_event.set()
                 threading.Thread(
                     target=_geocode_and_update,
