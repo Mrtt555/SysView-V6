@@ -94,9 +94,9 @@ if exist "!_TMP!" powershell -NoProfile -Command "Remove-Item '!_TMP!' -Recurse 
 if exist "!_ZIP!" del "!_ZIP!" >nul 2>&1
 
 echo  Connexion a GitHub...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest 'https://github.com/Mrtt555/SysView-V6/archive/refs/heads/master.zip' -OutFile '!_ZIP!' -UseBasicParsing -ErrorAction Stop" >> "%_LOGFILE%" 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest 'https://github.com/Mrtt555/SysView-V6/archive/refs/heads/master.zip' -OutFile '!_ZIP!' -UseBasicParsing -ErrorAction Stop" >> "%_LOGFILE%" 2>&1
 if errorlevel 1 (
-    call :log "[ERREUR] Telechargement echoue. Verifiez votre connexion."
+    call :log "[ERREUR] Telechargement echoue -- details dans : %TEMP%\sysview_setup.log"
     pause & exit /b 1
 )
 echo  Extraction...
@@ -180,7 +180,7 @@ if not defined _DOTNET (
     echo  SDK .NET 8 introuvable -- installation ^(~200 Mo, quelques minutes^)...
     >> "%_LOGFILE%" echo [%TIME:~0,8%] SDK .NET 8 absent -- telechargement...
     powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-        "& { $f='%TEMP%\dotnet-install.ps1'; Invoke-WebRequest 'https://dot.net/v1/dotnet-install.ps1' -OutFile $f -UseBasicParsing; & $f -Channel 8.0 -InstallDir '$env:USERPROFILE\.dotnet' }" >> "%_LOGFILE%" 2>&1
+        "& { [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; $f='%TEMP%\dotnet-install.ps1'; Invoke-WebRequest 'https://dot.net/v1/dotnet-install.ps1' -OutFile $f -UseBasicParsing -ErrorAction Stop; & $f -Channel 8.0 -InstallDir '$env:USERPROFILE\.dotnet' }" >> "%_LOGFILE%" 2>&1
     if errorlevel 1 (
         call :log "[ERREUR] Installation SDK .NET 8 echouee."
         pause & exit /b 1
@@ -246,7 +246,7 @@ if not errorlevel 1 goto :have_python
 echo  Python introuvable -- telechargement automatique...
 echo  (quelques minutes selon votre connexion)
 >> "%_LOGFILE%" echo [%TIME:~0,8%] Python absent -- telechargement...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& { $r=(Invoke-WebRequest 'https://www.python.org/downloads/' -UseBasicParsing).Content; $v=([regex]'Download Python (\d+\.\d+\.\d+)').Match($r).Groups[1].Value; if(!$v){throw 'Version introuvable'}; Write-Host('  -> Python '+$v); $f=$env:TEMP+'\pysetup.exe'; Invoke-WebRequest('https://www.python.org/ftp/python/'+$v+'/python-'+$v+'-amd64.exe') -OutFile $f -UseBasicParsing; Start-Process -Wait $f '/quiet InstallAllUsers=0 PrependPath=1 Include_test=0'; Remove-Item $f -ErrorAction SilentlyContinue }" >> "%_LOGFILE%" 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& { [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; $r=(Invoke-WebRequest 'https://www.python.org/downloads/' -UseBasicParsing -ErrorAction Stop).Content; $v=([regex]'Download Python (\d+\.\d+\.\d+)').Match($r).Groups[1].Value; if(!$v){throw 'Version introuvable'}; Write-Host('  -> Python '+$v); $f=$env:TEMP+'\pysetup.exe'; Invoke-WebRequest('https://www.python.org/ftp/python/'+$v+'/python-'+$v+'-amd64.exe') -OutFile $f -UseBasicParsing -ErrorAction Stop; Start-Process -Wait $f '/quiet InstallAllUsers=0 PrependPath=1 Include_test=0'; Remove-Item $f -ErrorAction SilentlyContinue }" >> "%_LOGFILE%" 2>&1
 if errorlevel 1 (
     echo.
     call :log "[ERREUR] Installation Python echouee."
@@ -304,12 +304,12 @@ if not exist "!_AETHER!\main.py" (
     echo  Telechargement d'Aether depuis GitHub...
     set "_AZ=%TEMP%\aether_dl.zip"
     set "_AT=%TEMP%\aether_tmp"
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest 'https://github.com/Mrtt555/Aether/archive/refs/heads/main.zip' -OutFile '%_AZ%' -UseBasicParsing -ErrorAction Stop" >> "%_LOGFILE%" 2>&1
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest 'https://github.com/Mrtt555/Aether/archive/refs/heads/main.zip' -OutFile '!_AZ!' -UseBasicParsing -ErrorAction Stop" >> "%_LOGFILE%" 2>&1
     if errorlevel 1 (
-        call :log "[ERREUR] Telechargement Aether echoue."
+        call :log "[ERREUR] Telechargement Aether echoue -- details dans : %TEMP%\sysview_setup.log"
         pause & exit /b 1
     )
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive '%_AZ%' -DestinationPath '%_AT%' -Force; $sub=(Get-ChildItem '%_AT%' -Directory | Select-Object -First 1).FullName; Move-Item $sub '!_AETHER!'; Remove-Item '%_AZ%','%_AT%' -Recurse -Force -ErrorAction SilentlyContinue" >> "%_LOGFILE%" 2>&1
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive '!_AZ!' -DestinationPath '!_AT!' -Force; $sub=(Get-ChildItem '!_AT!' -Directory | Select-Object -First 1).FullName; Move-Item $sub '!_AETHER!'; Remove-Item '!_AZ!','!_AT!' -Recurse -Force -ErrorAction SilentlyContinue" >> "%_LOGFILE%" 2>&1
     if not exist "!_AETHER!\main.py" (
         call :log "[ERREUR] Installation Aether echouee -- main.py introuvable."
         pause & exit /b 1
