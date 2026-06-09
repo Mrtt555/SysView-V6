@@ -195,8 +195,13 @@ echo [AVERT] Tache planifiee impossible ^(droits insuffisants^).
 echo  Demarrage simple configure. Pour les capteurs : clic droit "Executer en tant qu'administrateur".
 
 :hw_launch
-echo  Lancement de SysViewHardware ^(confirmation UAC attendue^)...
-powershell -NoProfile -Command "Start-Process '!_HW_EXE!' -Verb RunAs"
+echo  Lancement de SysViewHardware ^(sans UAC via tache planifiee^)...
+schtasks /run /tn "SysViewHardware" >nul 2>&1
+if errorlevel 1 (
+    :: Tache planifiee indisponible ^(droits insuffisants^) -- fallback avec UAC
+    echo  ^(tache planifiee indisponible -- UAC necessaire^)
+    powershell -NoProfile -Command "Start-Process '!_HW_EXE!' -Verb RunAs"
+)
 echo [OK] SysViewHardware lance ^(port 8086^).
 echo.
 
