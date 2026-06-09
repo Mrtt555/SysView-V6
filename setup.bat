@@ -107,33 +107,43 @@ if exist "!_TMP!" powershell -NoProfile -Command "Remove-Item '!_TMP!' -Recurse 
 if exist "!_ZIP!" del "!_ZIP!" >nul 2>&1
 
 echo  Connexion a GitHub...
-rem Essai 1 : git clone (utilise les credentials Windows, fonctionne sur repo prive)
-where git >nul 2>&1
+set "_DL_OK=0"
+
+rem Essai 1 : git clone (credentials Windows, fonctionne sur repo prive)
+where git >> "%_LOGFILE%" 2>&1
 if not errorlevel 1 (
+    call :log "[1/6] Telechargement via git clone..."
     git clone --depth 1 --branch master "https://github.com/Mrtt555/SysView-V6.git" "!_TMP!\SysView-V6-master" >> "%_LOGFILE%" 2>&1
-    if errorlevel 1 (
+    if not errorlevel 1 (
+        set "_DL_OK=1"
+    ) else (
         call :log "[WARN] git clone echoue -- tentative Invoke-WebRequest..."
         if exist "!_TMP!" powershell -NoProfile -Command "Remove-Item '!_TMP!' -Recurse -Force -ErrorAction SilentlyContinue"
-        goto :dl_web
     )
-    goto :dl_done
 )
 
-:dl_web
-powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest 'https://github.com/Mrtt555/SysView-V6/archive/refs/heads/master.zip' -OutFile '!_ZIP!' -UseBasicParsing -ErrorAction Stop" >> "%_LOGFILE%" 2>&1
-if errorlevel 1 (
-    call :log "[ERREUR] Telechargement echoue -- details dans : %TEMP%\sysview_setup.log"
-    pause & exit /b 1
+rem Essai 2 : Invoke-WebRequest (si git absent ou echoue -- repo public seulement)
+if "!_DL_OK!"=="0" (
+    call :log "[1/6] Telechargement via Invoke-WebRequest..."
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest 'https://github.com/Mrtt555/SysView-V6/archive/refs/heads/master.zip' -OutFile '!_ZIP!' -UseBasicParsing -ErrorAction Stop" >> "%_LOGFILE%" 2>&1
+    if not errorlevel 1 (
+        echo  Extraction...
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive '!_ZIP!' -DestinationPath '!_TMP!' -Force" >> "%_LOGFILE%" 2>&1
+        if not errorlevel 1 (
+            set "_DL_OK=1"
+            del "!_ZIP!" >nul 2>&1
+        ) else (
+            call :log "[ERREUR] Extraction echouee."
+        )
+    ) else (
+        call :log "[WARN] Invoke-WebRequest echoue (repo prive ou pas de connexion)."
+    )
 )
-echo  Extraction...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive '!_ZIP!' -DestinationPath '!_TMP!' -Force" >> "%_LOGFILE%" 2>&1
-if errorlevel 1 (
-    call :log "[ERREUR] Extraction echouee."
-    pause & exit /b 1
-)
-del "!_ZIP!" >nul 2>&1
 
-:dl_done
+if "!_DL_OK!"=="0" (
+    call :log "[ERREUR] Telechargement echoue (git clone + Invoke-WebRequest) -- details dans : %TEMP%\sysview_setup.log"
+    pause & exit /b 1
+)
 set "_SRC="
 for /d %%D in ("!_TMP!\*") do if not defined _SRC set "_SRC=%%D"
 if not defined _SRC (
@@ -170,14 +180,6 @@ powershell -NoProfile -Command "Remove-Item '!_TMP!' -Recurse -Force -ErrorActio
 :: Restaurer runtime_config.json
 if exist "!_BCK!\runtime_config.json" copy /y "!_BCK!\runtime_config.json" "!_API!\runtime_config.json" >> "%_LOGFILE%" 2>&1
 powershell -NoProfile -Command "Remove-Item '!_BCK!' -Recurse -Force -ErrorAction SilentlyContinue" >> "%_LOGFILE%" 2>&1
-
-:: Auto-update : copier le nouveau setup.bat sur le script courant (si standalone)
-if /i not "!_SETUP_DIR!"=="!_DEST!" (
-    if exist "!_DEST!\setup.bat" (
-        copy /y "!_DEST!\setup.bat" "%~f0" >> "%_LOGFILE%" 2>&1
-        call :log "[INFO] setup.bat mis a jour a son emplacement d'origine."
-    )
-)
 
 call :log "[OK] SysView V6 installe : !_DEST!"
 echo.
@@ -224,7 +226,7 @@ if not exist "!_HW_PROJ!" (
     goto :fail
 )
 
-call :log "[2/6] Compilation en cours ^(premiere fois ~2-3 min -- NuGet + build^)..."
+call :log "[2/6] Compilation en cours (premiere fois ~2-3 min -- NuGet + build)..."
 "!_DOTNET!" publish "!_HW_PROJ!" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none --nologo -v minimal >> "%_LOGFILE%" 2>&1
 if errorlevel 1 (
     call :log "[ERREUR] Compilation SysViewHardware echouee."
