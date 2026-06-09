@@ -704,7 +704,7 @@ begin
   LogFilePath := LogDir + '\setup.log';
   SaveStringToFile(LogFilePath,
     '================================================' + #13#10 +
-    'SysView V6 -- Setup  [' + FormatDateTime('dd/mm/yyyy hh:nn:ss', Now) + ']' + #13#10 +
+    'SysView V6 -- Setup  [' + GetDateTimeString('dd/mm/yyyy hh:nn:ss', #0, #0) + ']' + #13#10 +
     '================================================' + #13#10, False);
 
   AppendLog('Dossier cible : ' + gDest);
