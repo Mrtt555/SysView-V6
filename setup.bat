@@ -255,7 +255,7 @@ if errorlevel 1 (
     echo [ERREUR] pip install a echoue.
     pause & exit /b 1
 )
-"!_PY!" -c "import fastapi, uvicorn, requests, psutil, slowapi, httpx, pydantic; print('[OK] fastapi uvicorn requests psutil slowapi httpx pydantic -- OK')"
+"!_PY!" -c "import fastapi, uvicorn, requests, psutil, slowapi, httpx, multipart, pydantic; print('[OK] fastapi uvicorn requests psutil slowapi httpx python-multipart pydantic -- OK')"
 if errorlevel 1 (
     echo [ERREUR] Verification des paquets echouee.
     pause & exit /b 1
