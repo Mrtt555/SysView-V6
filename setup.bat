@@ -334,31 +334,14 @@ if not exist "!_AETHER!\main.py" (
     call :log "[5/6] Telechargement d'Aether depuis GitHub..."
     set "_AZ=%TEMP%\aether_dl.zip"
     set "_AT=%TEMP%\aether_tmp"
-    set "_AT_OK=0"
-
-    rem Essai 1 : git clone (credentials Windows -- repo prive)
-    where git >> "%_LOGFILE%" 2>&1
-    if not errorlevel 1 (
-        git clone --depth 1 --branch main "https://github.com/Mrtt555/Aether.git" "!_AT!\Aether-main" >> "%_LOGFILE%" 2>&1
-        if not errorlevel 1 (
-            powershell -NoProfile -Command "Move-Item '!_AT!\Aether-main' '!_AETHER!'" >> "%_LOGFILE%" 2>&1
-            if exist "!_AETHER!\main.py" set "_AT_OK=1"
-        )
-        if exist "!_AT!" powershell -NoProfile -Command "Remove-Item '!_AT!' -Recurse -Force -EA SilentlyContinue"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest 'https://github.com/Mrtt555/Aether/archive/refs/heads/main.zip' -OutFile '!_AZ!' -UseBasicParsing -ErrorAction Stop" >> "%_LOGFILE%" 2>&1
+    if errorlevel 1 (
+        call :log "[ERREUR] Telechargement Aether echoue -- details dans : %TEMP%\sysview_setup.log"
+        pause & exit /b 1
     )
-
-    rem Essai 2 : Invoke-WebRequest (repo public seulement)
-    if "!_AT_OK!"=="0" (
-        call :log "[WARN] git clone Aether echoue -- tentative Invoke-WebRequest..."
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest 'https://github.com/Mrtt555/Aether/archive/refs/heads/main.zip' -OutFile '!_AZ!' -UseBasicParsing -ErrorAction Stop" >> "%_LOGFILE%" 2>&1
-        if not errorlevel 1 (
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive '!_AZ!' -DestinationPath '!_AT!' -Force; $sub=(Get-ChildItem '!_AT!' -Directory | Select-Object -First 1).FullName; Move-Item $sub '!_AETHER!'; Remove-Item '!_AZ!','!_AT!' -Recurse -Force -ErrorAction SilentlyContinue" >> "%_LOGFILE%" 2>&1
-            if exist "!_AETHER!\main.py" set "_AT_OK=1"
-        )
-    )
-
-    if "!_AT_OK!"=="0" (
-        call :log "[ERREUR] Telechargement Aether echoue (git clone + Invoke-WebRequest)."
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive '!_AZ!' -DestinationPath '!_AT!' -Force; $sub=(Get-ChildItem '!_AT!' -Directory | Select-Object -First 1).FullName; Move-Item $sub '!_AETHER!'; Remove-Item '!_AZ!','!_AT!' -Recurse -Force -ErrorAction SilentlyContinue" >> "%_LOGFILE%" 2>&1
+    if not exist "!_AETHER!\main.py" (
+        call :log "[ERREUR] Installation Aether echouee -- main.py introuvable."
         pause & exit /b 1
     )
     call :log "[OK] Aether telecharge."
