@@ -45,10 +45,13 @@ jobs:
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            TAG="${{ github.event.inputs.version }}"
           else
-            echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+            TAG="${GITHUB_REF_NAME}"
           fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          # AssemblyVersion requiert X.Y.Z sans le préfixe "v"
+          echo "assembly_version=${TAG#v}" >> $GITHUB_OUTPUT
 
       # ── Publish SysViewManager (win-x64, single-file) ──────────────────────
       - name: Publish SysViewManager
@@ -61,7 +64,7 @@ jobs:
             -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:DebugType=none `
-            -p:AssemblyVersion=${{ steps.version.outputs.tag }} `
+            -p:AssemblyVersion=${{ steps.version.outputs.assembly_version }} `
             --nologo
 
       # ── Vérification ─────────────────────────────────────────────────────────
