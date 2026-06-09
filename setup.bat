@@ -83,10 +83,23 @@ if exist "!_DEST!\" (
     echo.
 )
 
-:: 1/6 -- SysView V6 (GitHub)
+:: 1/6 -- SysView V6 (GitHub ou local)
 :: =========================================================
-call :log "[1/6] Telechargement de SysView V6 depuis GitHub..."
+call :log "[1/6] Installation / mise a jour de SysView V6..."
 echo ---------------------------------------------------------
+
+:: -- Detecter si setup.bat tourne depuis !_DEST! --------
+set "_SETUP_DIR=%~dp0"
+if "!_SETUP_DIR:~-1!"=="\" set "_SETUP_DIR=!_SETUP_DIR:~0,-1!"
+
+if /i "!_SETUP_DIR!"=="!_DEST!" (
+    rem Le script tourne depuis le dossier cible : fichiers deja presents, on saute le telechargement.
+    call :log "[1/6] Script lance depuis le dossier cible -- telechargement ignore."
+    echo  ^(fichiers locaux deja a jour -- telechargement GitHub ignore^)
+    goto :step2
+)
+
+:: -- Telechargement depuis GitHub (repo public ou git disponible) --
 set "_ZIP=%TEMP%\sysview_setup.zip"
 set "_TMP=%TEMP%\sysview_setup_tmp"
 
@@ -94,6 +107,19 @@ if exist "!_TMP!" powershell -NoProfile -Command "Remove-Item '!_TMP!' -Recurse 
 if exist "!_ZIP!" del "!_ZIP!" >nul 2>&1
 
 echo  Connexion a GitHub...
+rem Essai 1 : git clone (utilise les credentials Windows, fonctionne sur repo prive)
+where git >nul 2>&1
+if not errorlevel 1 (
+    git clone --depth 1 --branch master "https://github.com/Mrtt555/SysView-V6.git" "!_TMP!\SysView-V6-master" >> "%_LOGFILE%" 2>&1
+    if errorlevel 1 (
+        call :log "[WARN] git clone echoue -- tentative Invoke-WebRequest..."
+        if exist "!_TMP!" powershell -NoProfile -Command "Remove-Item '!_TMP!' -Recurse -Force -ErrorAction SilentlyContinue"
+        goto :dl_web
+    )
+    goto :dl_done
+)
+
+:dl_web
 powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest 'https://github.com/Mrtt555/SysView-V6/archive/refs/heads/master.zip' -OutFile '!_ZIP!' -UseBasicParsing -ErrorAction Stop" >> "%_LOGFILE%" 2>&1
 if errorlevel 1 (
     call :log "[ERREUR] Telechargement echoue -- details dans : %TEMP%\sysview_setup.log"
@@ -107,26 +133,23 @@ if errorlevel 1 (
 )
 del "!_ZIP!" >nul 2>&1
 
+:dl_done
 set "_SRC="
-for /d %%D in ("%_TMP%\*") do if not defined _SRC set "_SRC=%%D"
+for /d %%D in ("!_TMP!\*") do if not defined _SRC set "_SRC=%%D"
 if not defined _SRC (
     call :log "[ERREUR] Archive vide ou structure inattendue."
     pause & exit /b 1
 )
 
-:: Sauvegarder API\runtime_config.json (config perso -- ville, intervalle, etc.)
-:: Aether n'est pas sauvegarde : il est toujours retelecharge frais depuis GitHub a l'etape 5.
+:: Sauvegarder API\runtime_config.json
 set "_BCK=%TEMP%\sysview_bck"
 if exist "!_BCK!" powershell -NoProfile -Command "Remove-Item '!_BCK!' -Recurse -Force -ErrorAction SilentlyContinue"
 mkdir "!_BCK!" >nul 2>&1
 if exist "!_API!\runtime_config.json" copy /y "!_API!\runtime_config.json" "!_BCK!\runtime_config.json" >nul 2>&1
 
-:: Remplacer / installer
-rem Si setup.bat tourne depuis !_DEST!, robocopy met a jour sur place
-rem (evite de supprimer le dossier parent du script en cours d'execution).
+:: Remplacer / installer (robocopy sur place ou Move-Item si nouvelle install)
 if exist "!_DEST!\" (
     robocopy "!_SRC!" "!_DEST!" /E /IS /IT /PURGE /XF "runtime_config.json" "setup.bat" /XD "logs" >nul 2>&1
-    rem robocopy : 0-7 = succes  8+ = erreur
     if !errorlevel! GEQ 8 (
         call :log "[ERREUR] Mise a jour echouee (robocopy code !errorlevel!)."
         pause & exit /b 1
@@ -151,7 +174,7 @@ powershell -NoProfile -Command "Remove-Item '!_BCK!' -Recurse -Force -ErrorActio
 call :log "[OK] SysView V6 installe : !_DEST!"
 echo.
 
-
+:step2
 :: =========================================================
 :: 2/6 -- SYSVIEWHARDWARE (capteurs C# via LibreHardwareMonitorLib)
 :: =========================================================
