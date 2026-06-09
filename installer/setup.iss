@@ -78,6 +78,20 @@ fr.InstPageDesc=Veuillez patienter, l'installation est entierement automatique..
 function SendMessage(hWnd, Msg, wParam, lParam: LongInt): LongInt;
   external 'SendMessageW@user32.dll stdcall';
 
+// ── StringReplace absent du Pascal Inno Setup -- implementation manuelle ──────
+
+function StrReplace(const S, OldStr, NewStr: String): String;
+var I: Integer; R: String;
+begin
+  R := S;
+  I := Pos(OldStr, R);
+  while I > 0 do begin
+    R := Copy(R, 1, I - 1) + NewStr + Copy(R, I + Length(OldStr), MaxInt);
+    I := Pos(OldStr, R);
+  end;
+  Result := R;
+end;
+
 // =========================================================
 //  CONSTANTES ET VARIABLES GLOBALES
 // =========================================================
@@ -237,7 +251,7 @@ begin
      and (SteamPath <> '') then
   begin
     // Steam stocke le chemin avec des slashes /  -> convertir en \
-    SteamPath := StringReplace(SteamPath, '/', '\', [rfReplaceAll]);
+    SteamPath := StrReplace(SteamPath, '/', '\');
     Result    := SteamPath + '\steamapps\common\wallpaper_engine\projects\myprojects';
   end;
 end;
@@ -316,8 +330,8 @@ begin
   end;
   P2 := P1 + P2;
 
-  gLatStr   := StringReplace(Trim(Copy(Line, 1,      P1 - 1)),      ',', '.', [rfReplaceAll]);
-  gLonStr   := StringReplace(Trim(Copy(Line, P1 + 1, P2 - P1 - 1)), ',', '.', [rfReplaceAll]);
+  gLatStr   := StrReplace(Trim(Copy(Line, 1,      P1 - 1)),      ',', '.');
+  gLonStr   := StrReplace(Trim(Copy(Line, P1 + 1, P2 - P1 - 1)), ',', '.');
   gCityName := Trim(Copy(Line, P2 + 1, Length(Line)));
 
   if (gLatStr <> '') and (gLonStr <> '') and (gCityName <> '') then begin
