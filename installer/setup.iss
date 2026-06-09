@@ -226,7 +226,6 @@ var
   TmpDir, SrcDir, ZipFile : String;
   RC, RoboCRC             : Integer;
   Lines                   : TStringList;
-  I                       : Integer;
   GitExe                  : String;
 begin
   Result := False;
