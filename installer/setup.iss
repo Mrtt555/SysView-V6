@@ -626,7 +626,7 @@ begin
     AppendLog('[AVERT] SysViewHardware ne repond pas encore.');
 
   // ---- Raccourci Startup pour bridge ----
-  Shortcut := GetShellFolder('userstartup') + '\SysViewBridge.bat';
+  Shortcut := ExpandConstant('{userstartup}') + '\SysViewBridge.bat';
   SaveStringToFile(Shortcut, '@echo off' + #13#10 +
     'start "" "' + gPyW + '" "' + BridgePYW + '"' + #13#10, False);
   AppendLog('[OK] Raccourci demarrage bridge configure.');
