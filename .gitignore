@@ -1,22 +1,17 @@
-# ── Binaires compilés (.NET) ──────────────────────────────────
-*.exe
-*.dll
-*.pdb
-obj/
-bin/
+# .NET build artifacts
+**/bin/
+**/obj/
 
-# ── Python ────────────────────────────────────────────────────
-__pycache__/
-*.py[cod]
-*.pyo
+# Inno Setup output
+installer/Output/
 
-# ── Config locale (données personnelles : ville / coordonnées) ─
-API V3/runtime_config.json
+# Logs générés à l'exécution
+logs/
+*.log
 
-# ── Runtime bridge ────────────────────────────────────────────
-API V3/bridge.pid
-API V3/logs/
+# Config runtime (paths locaux)
+runtime_config.json
 
-# ── OS ────────────────────────────────────────────────────────
-.DS_Store
-Thumbs.db
+# Fichiers temporaires
+*.pid
+*.tmp
