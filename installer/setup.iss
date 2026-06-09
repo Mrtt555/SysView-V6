@@ -7,7 +7,8 @@
 #define AppVersion "1.0"
 #define AppURL     "https://github.com/Mrtt555/SysView-V6"
 #define CloneURL   "https://github.com/Mrtt555/SysView-V6.git"
-#define AetherURL  "https://github.com/Mrtt555/Aether/archive/refs/heads/main.zip"
+#define AetherCloneURL "https://github.com/Mrtt555/Aether.git"
+#define AetherZipURL   "https://github.com/Mrtt555/Aether/archive/refs/heads/main.zip"
 
 [Setup]
 AppName={#AppName}
@@ -57,7 +58,8 @@ fr.FinishMsg=SysView V6 est installe et tourne.%n%nEndpoints actifs :%n  http://
 const
   DEFAULT_MYPROJECTS = 'C:\Program Files (x86)\Steam\steamapps\common\wallpaper_engine\projects\myprojects';
   CLONE_URL          = '{#CloneURL}';
-  AETHER_URL         = '{#AetherURL}';
+  AETHER_CLONE_URL   = '{#AetherCloneURL}';
+  AETHER_ZIP_URL     = '{#AetherZipURL}';
   BRIDGE_PORT        = 5001;
   AETHER_PORT        = 8001;
   HW_PORT            = 8086;
@@ -508,41 +510,59 @@ begin
     SetStatus('[5/6] Telechargement d''Aether...');
     ZipFile := ExpandConstant('{tmp}\aether.zip');
     TmpDir  := ExpandConstant('{tmp}\aether_tmp');
+    SubDir  := '';
 
-    ExecPS('[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;' +
-      '$ProgressPreference=''SilentlyContinue'';' +
-      'Invoke-WebRequest ''' + AETHER_URL + ''' -OutFile ''' + ZipFile + ''' -UseBasicParsing -EA Stop');
+    ExecPS('if (Test-Path ''' + TmpDir + ''') { Remove-Item ''' + TmpDir + ''' -Recurse -Force }');
 
-    if not FileExists(ZipFile) then begin
-      AppendLog('[ERREUR] Telechargement Aether echoue.');
-      Exit;
-    end;
-
-    ExecPS('Expand-Archive ''' + ZipFile + ''' -DestinationPath ''' + TmpDir + ''' -Force');
-    DeleteFile(ZipFile);
-
-    // Trouver le sous-dossier
-    Lines := TStringList.Create;
-    try
+    // -- Essai 1 : git clone (credentials Windows -- repo prive) --
+    AppendLog('[5/6] Telechargement via git clone...');
+    if FindInPath('git') <> '' then begin
       Exec(ExpandConstant('{cmd}'),
-        '/c dir /b /ad "' + TmpDir + '" > "' + ExpandConstant('{tmp}\sv_atdir.log') + '" 2>&1',
+        '/c git clone --depth 1 --branch main "' + AETHER_CLONE_URL + '"'
+        + ' "' + TmpDir + '\Aether-main" >> "' + LogFilePath + '" 2>&1',
         '', SW_HIDE, ewWaitUntilTerminated, RC);
-      Lines.LoadFromFile(ExpandConstant('{tmp}\sv_atdir.log'));
-      if Lines.Count > 0 then SubDir := TmpDir + '\' + Trim(Lines[0]);
-    finally
-      Lines.Free;
+      if RC = 0 then begin
+        ExecPS('Move-Item ''' + TmpDir + '\Aether-main'' ''' + gAether + '''');
+        ExecPS('if (Test-Path ''' + TmpDir + ''') { Remove-Item ''' + TmpDir + ''' -Recurse -Force -EA SilentlyContinue }');
+        if FileExists(gAether + '\main.py') then begin
+          AppendLog('[OK] Aether telecharge via git clone.');
+          SubDir := 'done'; // marqueur : pas besoin du fallback
+        end;
+      end;
     end;
 
+    // -- Essai 2 : Invoke-WebRequest (repo public seulement) --
     if SubDir = '' then begin
-      AppendLog('[ERREUR] Archive Aether vide ou inattendue.');
-      Exit;
-    end;
+      AppendLog('[WARN] git clone Aether echoue -- tentative Invoke-WebRequest...');
+      ExecPS('[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;' +
+        '$ProgressPreference=''SilentlyContinue'';' +
+        'Invoke-WebRequest ''' + AETHER_ZIP_URL + ''' -OutFile ''' + ZipFile + ''' -UseBasicParsing -EA Stop');
 
-    ExecPS('Move-Item ''' + SubDir + ''' ''' + gAether + '''');
-    ExecPS('Remove-Item ''' + TmpDir + ''' -Recurse -Force -EA SilentlyContinue');
+      if FileExists(ZipFile) then begin
+        ExecPS('Expand-Archive ''' + ZipFile + ''' -DestinationPath ''' + TmpDir + ''' -Force');
+        DeleteFile(ZipFile);
+
+        Lines := TStringList.Create;
+        try
+          Exec(ExpandConstant('{cmd}'),
+            '/c dir /b /ad "' + TmpDir + '" > "' + ExpandConstant('{tmp}\sv_atdir.log') + '" 2>&1',
+            '', SW_HIDE, ewWaitUntilTerminated, RC);
+          Lines.LoadFromFile(ExpandConstant('{tmp}\sv_atdir.log'));
+          if Lines.Count > 0 then SubDir := TmpDir + '\' + Trim(Lines[0]);
+        finally
+          Lines.Free;
+        end;
+
+        if SubDir <> '' then begin
+          ExecPS('Move-Item ''' + SubDir + ''' ''' + gAether + '''');
+          ExecPS('Remove-Item ''' + TmpDir + ''' -Recurse -Force -EA SilentlyContinue');
+        end;
+      end;
+    end;
 
     if not FileExists(gAether + '\main.py') then begin
-      AppendLog('[ERREUR] Aether : main.py introuvable apres extraction.');
+      AppendLog('[ERREUR] Telechargement Aether echoue (git clone + Invoke-WebRequest).');
+      AppendLog('         Verifiez que git est installe et que vous etes authentifie.');
       Exit;
     end;
     AppendLog('[OK] Aether telecharge.');
