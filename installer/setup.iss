@@ -57,7 +57,7 @@ fr.InstPageDesc=Veuillez patienter...
 [Code]
 
 // Declaration explicite de SendMessage (non expose nativement en IS6 Pascal)
-function SendMessage(hWnd: HWND; Msg: UINT; wParam: WPARAM; lParam: LPARAM): LRESULT;
+function SendMessage(hWnd: LongInt; Msg: LongInt; wParam: LongInt; lParam: LongInt): LongInt;
   external 'SendMessageW@user32.dll stdcall';
 
 // =========================================================
