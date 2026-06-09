@@ -8,9 +8,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <AssemblyTitle>SysView V6</AssemblyTitle>
-    <Company>SysView</Company>
-    <Product>SysView V6</Product>
+    <AssemblyTitle>SysViewManager</AssemblyTitle>
+    <Company>Astralcodes</Company>
+    <Product>SysViewManager</Product>
+    <Description>SysViewManager</Description>
+    <Copyright>© 2026 Astralcodes</Copyright>
     <!-- Versions contrôlées par publish.ps1 -Version x.y.z -->
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>
