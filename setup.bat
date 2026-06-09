@@ -149,13 +149,13 @@ if exist "!_API!\runtime_config.json" copy /y "!_API!\runtime_config.json" "!_BC
 
 :: Remplacer / installer (robocopy sur place ou Move-Item si nouvelle install)
 if exist "!_DEST!\" (
-    robocopy "!_SRC!" "!_DEST!" /E /IS /IT /PURGE /XF "runtime_config.json" "setup.bat" /XD "logs" >nul 2>&1
+    robocopy "!_SRC!" "!_DEST!" /E /IS /IT /PURGE /XF "runtime_config.json" /XD "logs" >> "%_LOGFILE%" 2>&1
     if !errorlevel! GEQ 8 (
         call :log "[ERREUR] Mise a jour echouee (robocopy code !errorlevel!)."
         pause & exit /b 1
     )
 ) else (
-    powershell -NoProfile -Command "Move-Item '!_SRC!' '!_DEST!'"
+    powershell -NoProfile -Command "Move-Item '!_SRC!' '!_DEST!'" >> "%_LOGFILE%" 2>&1
     if errorlevel 1 (
         call :log "[ERREUR] Installation initiale : deplacement echoue."
         pause & exit /b 1
@@ -165,11 +165,19 @@ if not exist "!_DEST!\SysView.html" (
     call :log "[ERREUR] SysView.html introuvable apres extraction."
     pause & exit /b 1
 )
-powershell -NoProfile -Command "Remove-Item '!_TMP!' -Recurse -Force -ErrorAction SilentlyContinue"
+powershell -NoProfile -Command "Remove-Item '!_TMP!' -Recurse -Force -ErrorAction SilentlyContinue" >> "%_LOGFILE%" 2>&1
 
 :: Restaurer runtime_config.json
-if exist "!_BCK!\runtime_config.json" copy /y "!_BCK!\runtime_config.json" "!_API!\runtime_config.json" >nul 2>&1
-powershell -NoProfile -Command "Remove-Item '!_BCK!' -Recurse -Force -ErrorAction SilentlyContinue"
+if exist "!_BCK!\runtime_config.json" copy /y "!_BCK!\runtime_config.json" "!_API!\runtime_config.json" >> "%_LOGFILE%" 2>&1
+powershell -NoProfile -Command "Remove-Item '!_BCK!' -Recurse -Force -ErrorAction SilentlyContinue" >> "%_LOGFILE%" 2>&1
+
+:: Auto-update : copier le nouveau setup.bat sur le script courant (si standalone)
+if /i not "!_SETUP_DIR!"=="!_DEST!" (
+    if exist "!_DEST!\setup.bat" (
+        copy /y "!_DEST!\setup.bat" "%~f0" >> "%_LOGFILE%" 2>&1
+        call :log "[INFO] setup.bat mis a jour a son emplacement d'origine."
+    )
+)
 
 call :log "[OK] SysView V6 installe : !_DEST!"
 echo.
