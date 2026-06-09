@@ -84,13 +84,17 @@ static class Program
         Logger.Info("Program", "  [5/5] MediaState...");
         var media = new MediaState();
 
+        // ── TMDB — poster images pour les services de streaming ───────────────
+        using var tmdb = new TmdbService();
+        tmdb.Configure(rtCfg.TmdbApiKey);
+
         // ── SMTC — détection native du média en cours ─────────────────────────
         var cts    = new CancellationTokenSource();
         SmtcService? smtc = null;
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763))
         {
             Logger.Info("Program", "SMTC : Windows 10 1809+ détecté — démarrage du service...");
-            smtc = new SmtcService(media);
+            smtc = new SmtcService(media, tmdb);
             _ = smtc.StartAsync(cts.Token);
         }
         else

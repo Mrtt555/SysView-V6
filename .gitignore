@@ -16,7 +16,11 @@ runtime_config.json
 # Le .cer public (certs/Astralcodes.cer) est lui versionné
 certs/*.pfx
 certs/*.p12
-
+*/certs/*.cer
 # Fichiers temporaires
 *.pid
 *.tmp
+
+publish.ps1
+publish.bat
+install-cert.ps1

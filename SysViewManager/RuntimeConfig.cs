@@ -22,6 +22,12 @@ public sealed class RuntimeConfig
     public bool   LhmEnabled         { get; private set; } = true;
     /// <summary>Modèle météo ("best_match" → auto-résolution AROME si France).</summary>
     public string WeatherModel       { get; private set; } = "best_match";
+    /// <summary>
+    /// Clé API TMDB v3 (optionnel). Active la recherche de poster pour les
+    /// services de streaming sans miniature SMTC (Netflix, Prime Video…).
+    /// Clé gratuite : https://www.themoviedb.org/settings/api
+    /// </summary>
+    public string TmdbApiKey         { get; private set; } = "";
 
     /// <param name="appDataDir">%AppData%\SysViewManager\</param>
     public RuntimeConfig(string appDataDir)
@@ -111,11 +117,15 @@ public sealed class RuntimeConfig
                 var v = wm.GetValue<string>();
                 if (v != null && WeatherService.WEATHER_MODELS.ContainsKey(v)) WeatherModel = v;
             }
+            if (json["tmdb_api_key"] is JsonNode tk && tk.GetValue<string>() is { Length: > 0 } tkey)
+                TmdbApiKey = tkey;
 
             Logger.Info("Config", "Config chargée :");
             Logger.Info("Config", $"  ville={City}  lat={G(Lat)}  lon={G(Lon)}");
             Logger.Info("Config", $"  météo : intervalle={WeatherIntervalMin}min  modèle={WeatherModel}");
             Logger.Info("Config", $"  réseau={NetworkIface}  lhm={LhmEnabled.ToString().ToLower()}");
+            if (!string.IsNullOrEmpty(TmdbApiKey))
+                Logger.Info("Config", $"  tmdb : clé définie ({TmdbApiKey[..Math.Min(4, TmdbApiKey.Length)]}…)");
         }
         catch (Exception ex)
         {
@@ -134,6 +144,9 @@ public sealed class RuntimeConfig
                 intv  = WeatherIntervalMin; iface = NetworkIface; model = WeatherModel;
             }
             var opts = new JsonSerializerOptions { WriteIndented = true };
+            string tmdbKey;
+            lock (_mu) { tmdbKey = TmdbApiKey; }
+
             var obj  = new
             {
                 lat,
@@ -142,6 +155,7 @@ public sealed class RuntimeConfig
                 weather_interval_min = intv,
                 network_iface        = iface,
                 weather_model        = model,
+                tmdb_api_key         = tmdbKey,
             };
             File.WriteAllText(_path, JsonSerializer.Serialize(obj, opts), System.Text.Encoding.UTF8);
             Logger.Debug("Config", $"Sauvegardé → {_path}");

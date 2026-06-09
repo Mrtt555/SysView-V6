@@ -32,7 +32,8 @@ namespace SysViewManager;
 [SupportedOSPlatform("windows10.0.17763.0")]
 public sealed class SmtcService : IDisposable
 {
-    private readonly MediaState _media;
+    private readonly MediaState  _media;
+    private readonly TmdbService? _tmdb;
 
     private GlobalSystemMediaTransportControlsSessionManager? _mgr;
     private GlobalSystemMediaTransportControlsSession? _session;
@@ -41,6 +42,76 @@ public sealed class SmtcService : IDisposable
     private string _lastThumbTitle = "";
     private string _lastThumbUrl   = "";
 
+    // ─── Détection des services de streaming dans le titre du navigateur ────
+    // Format des titres selon le service :
+    //   Préfixe  : "Prime Video: {titre}"
+    //   Suffixe  : "{titre} | Netflix",  "{titre} - Crunchyroll", etc.
+    private static readonly (string Pattern, bool IsPrefix, string ServiceName)[] _streamingPatterns =
+    {
+        // ── Préfixes ───────────────────────────────────────────────────────
+        ("Prime Video: ",        true,  "Prime Video"),
+        ("Amazon Prime Video: ", true,  "Prime Video"),
+
+        // ── Suffixes ───────────────────────────────────────────────────────
+        (" | Netflix",           false, "Netflix"),
+        (" | Disney+",           false, "Disney+"),
+        (" | Max",               false, "Max"),
+        (" | Hulu",              false, "Hulu"),
+        (" | Paramount+",        false, "Paramount+"),
+        (" | Peacock",           false, "Peacock"),
+        (" | MUBI",              false, "MUBI"),
+        (" | Shudder",           false, "Shudder"),
+        (" | Tubi",              false, "Tubi"),
+        (" | SkyShowtime",       false, "SkyShowtime"),
+        (" | Funimation",        false, "Funimation"),
+        (" | Crunchyroll",       false, "Crunchyroll"),
+        (" - Crunchyroll",       false, "Crunchyroll"),
+        (" — Crunchyroll",       false, "Crunchyroll"),
+        (" - Apple TV+",         false, "Apple TV+"),
+        (" — Apple TV+",         false, "Apple TV+"),
+        (" - Plex",              false, "Plex"),
+        (" - Emby",              false, "Emby"),
+        (" - Jellyfin",          false, "Jellyfin"),
+        (" | Jellyfin",          false, "Jellyfin"),
+        (" — Jellyfin",          false, "Jellyfin"),
+        (" | HBO Max",           false, "HBO Max"),
+    };
+
+    /// <summary>
+    /// Extrait le titre propre et le nom du service depuis le titre brut du navigateur.
+    /// Ex : "Prime Video: The Boys" → ("The Boys", "Prime Video")
+    ///      "Stranger Things | Netflix" → ("Stranger Things", "Netflix")
+    ///      "Natasha St-Pier - Tu trouveras" → ("Natasha St-Pier - Tu trouveras", "")
+    /// </summary>
+    private static (string CleanTitle, string Service) ExtractStreamingService(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return (raw, "");
+
+        foreach (var (pattern, isPrefix, service) in _streamingPatterns)
+        {
+            if (isPrefix)
+            {
+                if (raw.StartsWith(pattern, StringComparison.OrdinalIgnoreCase))
+                    return (raw[pattern.Length..].Trim(), service);
+            }
+            else
+            {
+                // Chercher le séparateur en partant de la fin (le titre lui-même peut
+                // contenir " | " ou " - " mais le séparateur de service est toujours dernier)
+                int idx = raw.LastIndexOf(pattern, StringComparison.OrdinalIgnoreCase);
+                if (idx > 0)
+                    return (raw[..idx].Trim(), service);
+            }
+        }
+
+        return (raw, "");
+    }
+
+    // Indique que MediaPropertiesChanged vient de se déclencher :
+    // la miniature DOIT être re-lue même si le titre n'a pas changé
+    // (Brave/Chrome fournit d'abord l'icône de l'app, puis la miniature réelle).
+    private volatile bool _pendingThumbRefresh = false;
+
     // État précédent pour logs différentiels
     private string _lastLoggedTitle  = "";
     private string _lastLoggedAppId  = "";
@@ -48,10 +119,11 @@ public sealed class SmtcService : IDisposable
     // Sémaphore 1-1 : empêche les FetchAsync concurrents
     private readonly SemaphoreSlim _sem = new(1, 1);
 
-    public SmtcService(MediaState media)
+    public SmtcService(MediaState media, TmdbService? tmdb = null)
     {
         _media = media;
-        Logger.Info("SMTC", "Service créé");
+        _tmdb  = tmdb;
+        Logger.Info("SMTC", "Service créé" + (tmdb?.IsConfigured == true ? " [TMDB actif]" : ""));
     }
 
     // ─── Démarrage ───────────────────────────────────────────────────────────
@@ -171,6 +243,10 @@ public sealed class SmtcService : IDisposable
                                  MediaPropertiesChangedEventArgs e)
     {
         Logger.Debug("SMTC", $"MediaPropertiesChanged — {s.SourceAppUserModelId}");
+        // Forcer la relecture de la miniature même si le titre n'a pas changé :
+        // les navigateurs (Brave, Chrome…) fournissent souvent l'icône de l'app
+        // dans un premier événement, puis la vraie miniature dans un second.
+        _pendingThumbRefresh = true;
         _ = Task.Run(FetchAsync);
     }
 
@@ -225,6 +301,13 @@ public sealed class SmtcService : IDisposable
             Logger.Debug("SMTC", "FetchAsync ignoré (déjà en cours)");
             return;
         }
+
+        // Lire et réinitialiser le flag APRÈS avoir acquis le sémaphore.
+        // Si _pendingThumbRefresh repasse à true pendant notre exécution (nouveau
+        // MediaPropertiesChanged), le bloc finally re-queuera un nouveau FetchAsync.
+        bool forceThumb = _pendingThumbRefresh;
+        _pendingThumbRefresh = false;
+
         try
         {
             var s = _session;
@@ -245,20 +328,35 @@ public sealed class SmtcService : IDisposable
                 return;
             }
 
-            string title  = props?.Title  ?? "";
-            string artist = props?.Artist ?? "";
-            bool   playing = playback?.PlaybackStatus ==
-                             GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+            string rawTitle = props?.Title  ?? "";
+            string artist   = props?.Artist ?? "";
+            bool   playing  = playback?.PlaybackStatus ==
+                              GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
             double position = timeline?.Position.TotalSeconds ?? 0;
             double duration = timeline?.EndTime.TotalSeconds  ?? 0;
+
+            // ── Nettoyage du titre (services de streaming) ────────────────────
+            // Ex: "Prime Video: The Boys" → title="The Boys", service="Prime Video"
+            //     "Stranger Things | Netflix" → title="Stranger Things", service="Netflix"
+            var (title, service) = ExtractStreamingService(rawTitle);
+
+            // Artiste : si vide et service détecté, utiliser le service comme fallback
+            // (Netflix, Prime Video, etc. ne fournissent pas d'artiste via SMTC)
+            if (string.IsNullOrEmpty(artist) && !string.IsNullOrEmpty(service))
+                artist = service;
 
             // ── Miniature ─────────────────────────────────────────────────────
             string thumbUrl       = "";
             bool   thumbFromCache = false;
+            bool   thumbFromTmdb  = false;
 
             if (!string.IsNullOrEmpty(title))
             {
-                if (title == _lastThumbTitle)
+                // Utiliser le cache seulement si :
+                //   • le titre n'a pas changé (même morceau/vidéo)
+                //   • ET aucun MediaPropertiesChanged n'a demandé de relecture
+                //     (forceThumb = false → cas timeline / playback uniquement)
+                if (!forceThumb && title == _lastThumbTitle)
                 {
                     thumbUrl       = _lastThumbUrl;
                     thumbFromCache = true;
@@ -287,24 +385,34 @@ public sealed class SmtcService : IDisposable
                         else
                         {
                             Logger.Warn("SMTC", $"  Miniature vide (0 octet) — app={s.SourceAppUserModelId}");
+                            // Pas de miniature SMTC → essayer TMDB
+                            thumbUrl = await TryTmdbAsync(title, service);
+                            thumbFromTmdb = !string.IsNullOrEmpty(thumbUrl);
                             _lastThumbTitle = title;
-                            _lastThumbUrl   = "";
+                            _lastThumbUrl   = thumbUrl;
                         }
                     }
                     catch (Exception ex)
                     {
                         swThumb.Stop();
                         Logger.Warn("SMTC", $"  Miniature illisible ({swThumb.ElapsedMilliseconds} ms) : {ex.Message}");
+                        thumbUrl = await TryTmdbAsync(title, service);
+                        thumbFromTmdb = !string.IsNullOrEmpty(thumbUrl);
                         _lastThumbTitle = title;
-                        _lastThumbUrl   = "";
+                        _lastThumbUrl   = thumbUrl;
                     }
                 }
                 else
                 {
-                    // Navigateur/YouTube : pas de miniature via SMTC (limitation API web)
-                    Logger.Debug("SMTC", $"  Pas de miniature pour \"{title}\" (source={s.SourceAppUserModelId})");
+                    // Pas de miniature fournie par l'app (Thumbnail == null)
+                    // → typique pour les services DRM (Netflix, Prime Video…)
+                    // → tentative de récupération du poster via TMDB
+                    thumbUrl = await TryTmdbAsync(title, service);
+                    thumbFromTmdb = !string.IsNullOrEmpty(thumbUrl);
+                    if (!thumbFromTmdb)
+                        Logger.Debug("SMTC", $"  Pas de miniature pour \"{title}\" (source={s.SourceAppUserModelId})");
                     _lastThumbTitle = title;
-                    _lastThumbUrl   = "";
+                    _lastThumbUrl   = thumbUrl;
                 }
             }
             else
@@ -319,11 +427,14 @@ public sealed class SmtcService : IDisposable
                 _lastLoggedTitle = title;
                 _lastLoggedAppId = s.SourceAppUserModelId;
                 if (!string.IsNullOrEmpty(title))
-                    Logger.Info("SMTC", $"Média : {(playing ? "▶" : "⏸")} \"{title}\" — {artist}"
-                        + (thumbFromCache ? " [miniature: cache]"
-                          : !string.IsNullOrEmpty(thumbUrl) ? " [miniature: encodée]"
-                          : " [sans miniature]")
-                        + $"  (source={s.SourceAppUserModelId})");
+                {
+                    string thumbLabel = thumbFromCache ? "[miniature: cache]"
+                                      : thumbFromTmdb  ? "[miniature: TMDB]"
+                                      : !string.IsNullOrEmpty(thumbUrl) ? "[miniature: encodée]"
+                                      : "[sans miniature]";
+                    string serviceLabel = !string.IsNullOrEmpty(service) ? $" [{service}]" : "";
+                    Logger.Info("SMTC", $"Média : {(playing ? "▶" : "⏸")} \"{title}\"{serviceLabel} — {artist}  {thumbLabel}  (source={s.SourceAppUserModelId})");
+                }
                 else
                     Logger.Debug("SMTC", $"Titre vide — app={s.SourceAppUserModelId}");
             }
@@ -333,10 +444,28 @@ public sealed class SmtcService : IDisposable
         finally
         {
             _sem.Release();
+            // Si un MediaPropertiesChanged est arrivé PENDANT notre exécution,
+            // re-queuer immédiatement pour ne pas manquer la miniature mise à jour.
+            if (_pendingThumbRefresh)
+                _ = Task.Run(FetchAsync);
         }
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Tente de récupérer un poster TMDB pour le titre donné.
+    /// Ne fait rien si TMDB n'est pas configuré ou si ce n'est pas un service de streaming.
+    /// </summary>
+    private async Task<string> TryTmdbAsync(string title, string service)
+    {
+        if (_tmdb == null || !_tmdb.IsConfigured) return "";
+        // N'interroger TMDB que pour les services de streaming identifiés
+        // (pas pour les lectures locales, Spotify Web, etc.)
+        if (string.IsNullOrEmpty(service)) return "";
+
+        return await _tmdb.GetPosterAsync(title);
+    }
 
     private static string StatusLabel(GlobalSystemMediaTransportControlsSession s)
     {

@@ -429,7 +429,7 @@ html,body{width:1920px;height:1080px;overflow:hidden;background:rgb(var(--bg));c
       <div class="martist" id="media-artist">—</div>
       <div class="mprog">
         <div class="progbar"><div class="progfill" id="prog-fill" style="width:0%"></div></div>
-        <div class="progtime"><span id="time-el">0:00:00</span><span id="time-tot">0:00:00</span></div>
+        <div class="progtime"><span id="time-el">0:00</span><span id="time-tot">0:00</span></div>
       </div>
     </div>
   </div>
@@ -972,7 +972,30 @@ var demoIdx=0, demoEl=0;
 function fmtTime(sec){
   sec=Math.floor(Math.max(0,sec)||0);
   var h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60;
-  return h+':'+pad(m)+':'+pad(s);
+  if(h>0) return h+':'+pad(m)+':'+pad(s);
+  return m+':'+pad(s);
+}
+/* Reformate le champ artiste SMTC :
+   - Services de streaming connus → affiche tel quel (Prime Video, Netflix…)
+   - Handle sans espaces / finit par VEVO / "- Topic" → extrait le vrai artiste
+     depuis le titre en coupant avant le premier " - ".
+   Ex : "natashastpierVEVO" + "Natasha St-Pier - Tu trouveras" → "Natasha St-Pier"
+        "Netflix" + "Stranger Things" → "Netflix" */
+var _KNOWN_SVC=['Netflix','Prime Video','Disney+','Max','Hulu','Crunchyroll',
+  'Apple TV+','Plex','Emby','Jellyfin','Peacock','Paramount+','MUBI','Shudder',
+  'Tubi','SkyShowtime','Funimation','HBO Max'];
+function fmtArtist(artist, title){
+  if(!artist) return '';
+  // Services de streaming → ne pas appliquer la logique VEVO
+  if(_KNOWN_SVC.indexOf(artist) >= 0) return artist;
+  var noSpaces = artist.indexOf(' ') < 0;
+  var isVevo   = artist.slice(-4).toUpperCase() === 'VEVO';
+  var isTopic  = artist.slice(-8) === ' - Topic';
+  if(noSpaces || isVevo || isTopic){
+    var dash = title ? title.indexOf(' - ') : -1;
+    if(dash > 0 && dash < 60) return title.substring(0, dash);
+  }
+  return artist;
 }
 function setAlbumArt(src){
   if(!src||!src.length)return;
@@ -992,8 +1015,8 @@ function renderMediaProgress(snap){
     if(snap){
       bar.style.transition='none';
       bar.style.width='0%';
-      document.getElementById('time-el').textContent='0:00:00';
-      document.getElementById('time-tot').textContent='0:00:00';
+      document.getElementById('time-el').textContent='0:00';
+      document.getElementById('time-tot').textContent='0:00';
     }
     return;
   }
@@ -1077,7 +1100,7 @@ async function pollMediaBridge(){
     if(titleChanged) lastThumb='';
     document.getElementById('media-title').textContent=d.title;
     requestAnimationFrame(adjustTitleFont);
-    document.getElementById('media-artist').textContent=d.artist||'';
+    document.getElementById('media-artist').textContent=fmtArtist(d.artist||'',d.title||'');
     document.getElementById('media-artist').style.display='';
     /* Position deja interpolee cote bridge (float) — pas de Math.floor */
     if(d.thumb_url && d.thumb_url!==lastThumb){
@@ -1161,7 +1184,7 @@ var _audioEma   = new Array(24).fill(0);
       /* EMA asymétrique : montée rapide α=0.80 / descente douce α=0.18 */
       var a=peak>_audioEma[i]?0.80:0.18;
       _audioEma[i]+=a*(peak-_audioEma[i]);
-      var scale=Math.max(0.04,Math.min(0.90,_audioEma[i]*0.9));
+      var scale=Math.max(0,Math.min(0.90,_audioEma[i]*0.9));
       if(b[i]) b[i].style.transform='scaleY('+scale.toFixed(3)+')';
     }
   });

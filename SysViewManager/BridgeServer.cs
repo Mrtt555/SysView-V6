@@ -155,14 +155,21 @@ public sealed class BridgeServer
             }
         });
 
+        // Access-Control-Allow-Private-Network (requis par Chromium/CEF — réseau local)
+        // DOIT être enregistré AVANT UseCors : les preflight OPTIONS sont court-circuités
+        // par UseCors (il ne rappelle pas next), donc tout middleware après est ignoré.
+        // OnStarting() garantit que le header est présent sur TOUTES les réponses,
+        // y compris les preflights gérés par CORS.
+        app.Use(async (ctx, next) => {
+            ctx.Response.OnStarting(() => {
+                ctx.Response.Headers["Access-Control-Allow-Private-Network"] = "true";
+                return Task.CompletedTask;
+            });
+            await next(ctx);
+        });
+
         app.UseCors();
         app.UseRateLimiter();
-
-        // Access-Control-Allow-Private-Network (requis par Chromium — réseau local)
-        app.Use(async (ctx, next) => {
-            await next(ctx);
-            ctx.Response.Headers["Access-Control-Allow-Private-Network"] = "true";
-        });
 
         // ─────────────────────────────────────────────────────────────────────
         // GET /v1/health
