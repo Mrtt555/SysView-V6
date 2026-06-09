@@ -29,21 +29,24 @@ WizardSizePercent=120
 ; Pas besoin d'admin par defaut -- on demande si necessaire
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-; Langue
-ShowLanguageDialog=no
+; Langue : pas de dialog de selection (une seule langue)
+LanguageDetectionMethod=none
 
 [Languages]
 Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
 
-[CustomMessages]
+[Messages]
+; Surcharge des messages integres de la page de bienvenue
 fr.WelcomeLabel1=Bienvenue dans l'installeur de SysView V6
 fr.WelcomeLabel2=Ce programme va :%n%n  - Telecharger SysView V6 depuis GitHub%n  - Compiler SysViewHardware (.NET 8)%n  - Verifier / installer Python%n  - Installer les paquets Python%n  - Telecharger Aether (proxy meteo)%n  - Configurer le demarrage automatique%n  - Lancer tous les services%n%nAucune autre action ne sera necessaire.
+fr.FinishedLabel=SysView V6 est installe et en cours d'execution.%n%nEndpoints actifs :%n  http://127.0.0.1:5001/v1/status%n  http://127.0.0.1:8001%n  http://127.0.0.1:8086/data.json%n%nOuvrez Wallpaper Engine, selectionnez SysView.html et entrez votre ville.
+
+[CustomMessages]
+; Messages utilises via CustomMessage() dans le code Pascal
 fr.DirPageTitle=Dossier d'installation
 fr.DirPageDesc=Dossier myprojects de Wallpaper Engine (SysView V6 sera cree a l'interieur)
 fr.InstPageTitle=Installation en cours
 fr.InstPageDesc=Veuillez patienter...
-fr.FinishTitle=Installation terminee !
-fr.FinishMsg=SysView V6 est installe et tourne.%n%nEndpoints actifs :%n  http://127.0.0.1:5001/v1/status%n  http://127.0.0.1:8001%n  http://127.0.0.1:8086/data.json%n%nOuvrez Wallpaper Engine, selectionnez SysView.html et entrez votre ville.
 
 [Files]
 ; Rien a embarquer -- tout vient de GitHub a l'installation
@@ -571,6 +574,7 @@ var
   BridgePYW : String;
   RC, I     : Integer;
   PID       : String;
+  PIDLines  : TStringList;
 begin
   Result := False;
   BridgePYW := gAPI + '\SysViewBridge.pyw';
@@ -624,8 +628,13 @@ begin
   SetStatus('[6/6] Liberation des ports...');
   if FileExists(gAPI + '\bridge.pid') then begin
     // Lire PID
-    LoadStringFromFile(gAPI + '\bridge.pid', PID);
-    PID := Trim(PID);
+    PIDLines := TStringList.Create;
+    try
+      PIDLines.LoadFromFile(gAPI + '\bridge.pid');
+      if PIDLines.Count > 0 then PID := Trim(PIDLines[0]) else PID := '';
+    finally
+      PIDLines.Free;
+    end;
     if PID <> '' then
       Exec(ExpandConstant('{cmd}'),
         '/c taskkill /PID ' + PID + ' /F /T > nul 2>&1',
