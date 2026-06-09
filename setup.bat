@@ -57,7 +57,7 @@ if not exist "!_BASE!\" (
 
 if exist "!_DEST!\" (
     echo  [AVERT] SysView V6 est deja installe.
-    echo  Les fichiers seront mis a jour (aether et config conserves).
+    echo  Les fichiers seront mis a jour (runtime_config.json conserve, Aether retelecharge).
     echo.
     set /p "_OK=  Continuer ? (O / N) : "
     if /i "!_OK:~0,1!" NEQ "O" (  :: B-43 : accepte "Oui", "ok", etc.
@@ -98,14 +98,11 @@ if not defined _SRC (
     pause & exit /b 1
 )
 
-:: Sauvegarder Aether\ et API\runtime_config.json
+:: Sauvegarder API\runtime_config.json (config perso — ville, intervalle, etc.)
+:: Aether n'est pas sauvegarde : il est toujours retelecharge frais depuis GitHub a l'etape 5.
 set "_BCK=%TEMP%\sysview_bck"
 if exist "!_BCK!" powershell -NoProfile -Command "Remove-Item '!_BCK!' -Recurse -Force -ErrorAction SilentlyContinue"
 mkdir "!_BCK!" >nul 2>&1
-if exist "!_AETHER!\" (
-    echo  Sauvegarde d'Aether...
-    powershell -NoProfile -Command "Copy-Item '!_AETHER!' '!_BCK!\Aether' -Recurse -Force"
-)
 if exist "!_API!\runtime_config.json" copy /y "!_API!\runtime_config.json" "!_BCK!\runtime_config.json" >nul 2>&1
 
 :: Remplacer / installer
@@ -117,8 +114,7 @@ if not exist "!_DEST!\SysView.html" (
 )
 powershell -NoProfile -Command "Remove-Item '!_TMP!' -Recurse -Force -ErrorAction SilentlyContinue"
 
-:: Restaurer Aether\ et runtime_config.json
-if exist "!_BCK!\Aether\" powershell -NoProfile -Command "Copy-Item '!_BCK!\Aether' '!_AETHER!' -Recurse -Force"
+:: Restaurer runtime_config.json
 if exist "!_BCK!\runtime_config.json" copy /y "!_BCK!\runtime_config.json" "!_API!\runtime_config.json" >nul 2>&1
 powershell -NoProfile -Command "Remove-Item '!_BCK!' -Recurse -Force -ErrorAction SilentlyContinue"
 
