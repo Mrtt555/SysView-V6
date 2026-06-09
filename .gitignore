@@ -12,6 +12,11 @@ logs/
 # Config runtime (paths locaux)
 runtime_config.json
 
+# Certificat de signature — clé privée non versionnée
+# Le .cer public (certs/Astralcodes.cer) est lui versionné
+certs/*.pfx
+certs/*.p12
+
 # Fichiers temporaires
 *.pid
 *.tmp
