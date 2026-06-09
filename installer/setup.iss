@@ -508,7 +508,7 @@ begin
     'Invoke-WebRequest ''' + RELEASE_EXE_URL + ''' -OutFile ''' + DlExe + ''' -UseBasicParsing -EA Stop');
 
   if FileExists(DlExe) then begin
-    FileCopy(DlExe, gMgrExe, True);
+    CopyFile(DlExe, gMgrExe, True);
     DeleteFile(DlExe);
     AppendLog('[OK] SysViewManager.exe telecharge depuis GitHub Releases.');
     Result := True;
@@ -578,7 +578,7 @@ begin
     Exit;
   end;
 
-  FileCopy(PubExe, gMgrExe, True);
+  CopyFile(PubExe, gMgrExe, True);
   AppendLog('[OK] SysViewManager.exe compile et copie dans ' + gDest);
   Result := True;
 end;
