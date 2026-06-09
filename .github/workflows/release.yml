@@ -100,7 +100,7 @@ jobs:
             ### Données générées automatiquement
             | Fichier | Contenu |
             |---|---|
-            | `%AppData%\SysViewManager\Hardware.json` | CPU, GPU, RAM, réseau, disques (maj. 2 s) |
+            | `%AppData%\SysViewManager\Hardware.json` | CPU, GPU, RAM, réseau, disques (maj. 500 ms) |
             | `%AppData%\SysViewManager\Weather.json` | Météo, qualité de l'air, prévisions 48 h |
             | `%AppData%\SysViewManager\runtime_config.json` | Configuration persistée |
 
