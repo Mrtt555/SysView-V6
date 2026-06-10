@@ -13,7 +13,8 @@
 //     passe en pause et qu'une autre session joue, bascule dessus.
 //   ▸ La miniature base64 est ré-encodée UNIQUEMENT si le titre change.
 //   ▸ Plateforme : détection via SourceAppUserModelId (apps connues + parsing AUMID).
-//   ▸ Miniature : rejet automatique des favicons (< 5 Ko) → fallback TMDB.
+//   ▸ Miniature : rejet automatique des favicons (< 5 Ko) → fallback en ligne
+//     (vidéo : TMDB si clé, sinon iTunes+Wikipedia ; musique : Deezer/iTunes/MusicBrainz).
 //   ▸ Silencieux si SMTC indisponible.
 //
 // Note VLC : VLC doit avoir "Utiliser les touches multimédia Windows"
@@ -582,20 +583,36 @@ public sealed class SmtcService : IDisposable
 
     /// <summary>
     /// Orchestre la récupération de miniature en ligne selon le type de contenu :
-    ///   • Service vidéo identifié (Netflix, Prime…) → TMDB (poster haute qualité)
-    ///   • Musique / app locale / navigateur générique → MusicArt (Deezer → iTunes → MusicBrainz)
+    ///   • Service vidéo identifié (Netflix, Prime…)
+    ///       1. TMDB si clé configurée (poster haute qualité)
+    ///       2. iTunes Movie/TV + Wikipedia (sans clé, toujours actif)
+    ///   • Musique / app locale / navigateur générique
+    ///       → MusicArt : Deezer → iTunes Track → MusicBrainz+CAA
     /// Retourne une URL directe CDN ou "" si introuvable.
     /// </summary>
     private async Task<string> FetchOnlineThumbAsync(string title, string artist, string service)
     {
-        // Streaming vidéo avec service connu → TMDB en priorité
-        if (!string.IsNullOrEmpty(service) && _tmdb?.IsConfigured == true)
+        if (!string.IsNullOrEmpty(service))
         {
-            var poster = await _tmdb.GetPosterAsync(title);
-            if (!string.IsNullOrEmpty(poster)) return poster;
+            // ── Streaming vidéo ───────────────────────────────────────────────
+            // 1. TMDB si disponible (qualité supérieure, clé optionnelle)
+            if (_tmdb?.IsConfigured == true)
+            {
+                var poster = await _tmdb.GetPosterAsync(title);
+                if (!string.IsNullOrEmpty(poster)) return poster;
+            }
+
+            // 2. Fallback sans clé : iTunes Movie/TV + Wikipedia
+            if (_musicArt != null)
+            {
+                var poster = await _musicArt.GetPosterAsync(title);
+                if (!string.IsNullOrEmpty(poster)) return poster;
+            }
+
+            return "";  // Ne pas chercher une pochette musicale pour du streaming vidéo
         }
 
-        // Tout le reste (musique, apps locales, navigateur sans service) → MusicArt
+        // ── Musique / apps locales / navigateur sans service ─────────────────
         if (_musicArt != null)
             return await _musicArt.GetArtworkAsync(artist, title);
 

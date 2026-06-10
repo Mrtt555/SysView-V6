@@ -35,8 +35,87 @@ public sealed class MusicArtService : IDisposable
     // ─── API publique ─────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Retourne une URL CDN de pochette (600-1000 px) ou "" si introuvable.
-    /// Paramètres : l'artiste et le titre du morceau/album.
+    /// Retourne une URL de poster de film/série (≥ 600 px) ou "" si introuvable.
+    /// Chaîne sans clé : iTunes Movie → iTunes TV → Wikipedia.
+    /// </summary>
+    public async Task<string> GetPosterAsync(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return "";
+
+        var key = $"__video__|{title.Trim()}";
+        if (_cache.TryGetValue(key, out var cached)) return cached;
+        if (_cache.Count >= 120) _cache.Clear();
+
+        var url = await TryItunesVideoAsync(title, "movie");
+        if (string.IsNullOrEmpty(url))
+            url = await TryItunesVideoAsync(title, "tvSeason");
+        if (string.IsNullOrEmpty(url))
+            url = await TryWikipediaAsync(title);
+
+        _cache[key] = url;
+
+        if (!string.IsNullOrEmpty(url))
+            Logger.Info("MusicArt", $"Poster vidéo : \"{title}\" → {UrlShort(url)}");
+        else
+            Logger.Debug("MusicArt", $"Aucun poster : \"{title}\"");
+
+        return url;
+    }
+
+    // ─── iTunes Movie / TV (sans clé) ─────────────────────────────────────────
+
+    private async Task<string> TryItunesVideoAsync(string title, string entity)
+    {
+        try
+        {
+            var q    = Uri.EscapeDataString(title.Trim());
+            var json = await _http.GetStringAsync(
+                $"https://itunes.apple.com/search?term={q}&entity={entity}&limit=3");
+
+            using var doc     = JsonDocument.Parse(json);
+            var       root    = doc.RootElement;
+            if (root.GetProperty("resultCount").GetInt32() == 0) return "";
+
+            var results = root.GetProperty("results");
+            for (int i = 0; i < results.GetArrayLength(); i++)
+            {
+                if (!results[i].TryGetProperty("artworkUrl100", out var art)) continue;
+                var url = art.GetString() ?? "";
+                if (!string.IsNullOrEmpty(url))
+                    return url.Replace("100x100bb", "600x600bb");
+            }
+        }
+        catch (Exception ex) { Logger.Debug("MusicArt", $"iTunes {entity}: {ex.Message}"); }
+        return "";
+    }
+
+    // ─── Wikipedia REST (thumbnail de la page de l'œuvre) ────────────────────
+
+    private async Task<string> TryWikipediaAsync(string title)
+    {
+        try
+        {
+            // L'API REST accepte espaces et casse → encodage minimal
+            var q    = Uri.EscapeDataString(title.Trim());
+            var json = await _http.GetStringAsync(
+                $"https://en.wikipedia.org/api/rest_v1/page/summary/{q}");
+
+            using var doc  = JsonDocument.Parse(json);
+            var       root = doc.RootElement;
+            if (root.TryGetProperty("thumbnail", out var thumb) &&
+                thumb.TryGetProperty("source", out var src))
+            {
+                var url = src.GetString() ?? "";
+                if (!string.IsNullOrEmpty(url)) return url;
+            }
+        }
+        catch (Exception ex) { Logger.Debug("MusicArt", $"Wikipedia: {ex.Message}"); }
+        return "";
+    }
+
+    /// <summary>
+    /// Retourne une URL CDN de pochette musicale (600-1000 px) ou "" si introuvable.
+    /// Chaîne : Deezer → iTunes → MusicBrainz+CAA.
     /// </summary>
     public async Task<string> GetArtworkAsync(string artist, string title)
     {
