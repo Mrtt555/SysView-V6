@@ -6,12 +6,13 @@
 
 /* ─── CSS VARIABLES (configurables via Wallpaper Engine) ─── */
 :root {
-  --p:  160,100,255;   /* Primary   — bordures, cadres    */
-  --s:  200,140,255;   /* Secondary — barres, actif       */
-  --bg: 8,6,18;        /* Fond très sombre                */
-  --tx: 210,200,230;   /* Texte                           */
-  --op: 0.55;          /* Opacité globale                 */
-  --sz: 1;             /* Échelle UI  (100% = 1)          */
+  --p:   160,100,255;  /* Primary   — bordures, cadres    */
+  --s:   200,140,255;  /* Secondary — barres, actif       */
+  --bar: 200,140,255;  /* Bar fill  — barres de progression */
+  --bg:  8,6,18;       /* Fond très sombre                */
+  --tx:  210,200,230;  /* Texte                           */
+  --op:  0.55;         /* Opacité globale                 */
+  --sz:  1;            /* Échelle UI  (100% = 1)          */
 
   /* Dérivées — recalculées par JS à chaque changement d'opacité */
   --op-hi:     0.220;  /* gradient panel haut  (op×0.40)  */
@@ -152,7 +153,7 @@ html, body {
   margin-top: calc(1px * var(--sz));
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.mblk { margin-bottom: calc(9px * var(--sz)); }
+.mblk { margin-bottom: calc(14px * var(--sz)); }
 .mblk:last-child { margin-bottom: 0; }
 
 /* CPU + GPU côte à côte */
@@ -160,7 +161,7 @@ html, body {
   display: grid;
   grid-template-columns: 1fr 1px 1fr;
   gap: calc(12px * var(--sz));
-  margin-bottom: calc(10px * var(--sz));
+  margin-bottom: calc(14px * var(--sz));
 }
 .hw-sep { background: rgba(var(--p), 0.18); }
 
@@ -194,7 +195,7 @@ html, body {
 }
 .no-api .bfill { transition: none !important; }
 .no-api .stat-temp, .no-api .stat-pct { transition: none !important; }
-.bf-p { background: linear-gradient(90deg, rgba(var(--p),.35), rgba(var(--s),1)); }
+.bf-p { background: linear-gradient(90deg, rgba(var(--bar),.35), rgba(var(--bar),1)); }
 .bf-b { background: linear-gradient(90deg, rgba(60,120,220,.45), rgba(90,180,255,1)); }
 .bf-o { background: linear-gradient(90deg, rgba(200,80,20,.45), rgba(255,155,50,1)); }
 
@@ -213,11 +214,13 @@ html, body {
 .disk-free { font-size: calc(11px * var(--sz)); color: rgba(var(--tx), .36); }
 
 /* ─── RÉSEAU ─────────────────────────────────────────────── */
-.netrow {
+/* Grille partagée DL+UL : les deux barres ont la même largeur */
+.netrows {
   display: grid;
   grid-template-columns: max-content 1fr calc(88px * var(--sz));
   align-items: center;
-  gap: calc(8px * var(--sz));
+  column-gap: calc(8px * var(--sz));
+  row-gap: calc(6px * var(--sz));
   margin-top: calc(4px * var(--sz));
 }
 .netlabel {

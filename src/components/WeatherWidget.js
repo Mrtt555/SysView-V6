@@ -104,9 +104,12 @@ function T_weather(lang, key) {
   return (MAP[lang] || MAP.fr)[key] || key;
 }
 
-function fmtTemp(c, unit) {
-  if (unit === 'f') return '' + Math.round(c * 9 / 5 + 32);
-  return '' + Math.round(c);
+function fmtTemp(c, unit, decimal) {
+  if (unit === 'f') {
+    var f = c * 9 / 5 + 32;
+    return decimal ? f.toFixed(1) : '' + Math.round(f);
+  }
+  return decimal ? c.toFixed(1) : '' + Math.round(c);
 }
 function tempUnit(unit) { return unit === 'f' ? '°F' : '°C'; }
 
@@ -115,7 +118,7 @@ export function buildWeatherHtml(d, cfg) {
   if (d.om_temp === null || d.om_temp === undefined) return '';
   var lang = cfg.lang;
   var code = d.om_weather_code || 0;
-  var temp = fmtTemp(d.om_temp, cfg.tempUnit);
+  var temp = fmtTemp(d.om_temp, cfg.tempUnit, cfg.tempDecimal);
   var tu   = tempUnit(cfg.tempUnit);
   var prec = (d.om_precip_prob != null) ? d.om_precip_prob : '—';
   var wind = (d.om_wind != null) ? (+d.om_wind).toFixed(1) : '—';

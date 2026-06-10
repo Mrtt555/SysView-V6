@@ -95,7 +95,7 @@ document.addEventListener('alpine:init', function() {
       mediaTitle:'', mediaArtist:'', mediaPlatform:'', mediaType:'', mediaPlaying:false,
       mediaPos:0,    mediaDur:0,
       _lastTitle:'', _lastThumb:'', _mediaGoneAt:0, _pausedSince:0,
-      _vizBars: null,   _audioSilent: 0,
+      _vizBars: null,   _audioSilent: 0,  _vizRunning: false,
 
       bridgeOk:    false,
       _worker:     null,
@@ -300,18 +300,27 @@ document.addEventListener('alpine:init', function() {
           var a = peak > this._audioEma[i] ? 0.80 : 0.18;
           this._audioEma[i] += a * (peak - this._audioEma[i]);
           if (this._audioEma[i] > 0.008) anySound = true;
-          // Minimum 0.03 → barres toujours légèrement visibles même en silence WE
           var scale = Math.max(0.03, Math.min(0.90, this._audioEma[i] * 0.9));
           if (bars[i]) bars[i].style.transform = 'scaleY(' + scale.toFixed(3) + ')';
         }
-        // Silence prolongé → laisser l'animation CSS idle reprendre
+        // CSS animations override inline style.transform — cancel when WE audio is active
         if (anySound) {
           this._audioSilent = 0;
+          if (!this._vizRunning) {
+            this._vizRunning = true;
+            for (var i = 0; i < 24; i++) {
+              if (bars[i]) bars[i].style.animationName = 'none';
+            }
+          }
         } else {
           this._audioSilent++;
-          if (this._audioSilent > 45) {     // ~1.5 s à 30 fps
+          if (this._audioSilent > 45) {
+            this._vizRunning = false;
             for (var i = 0; i < 24; i++) {
-              if (bars[i]) bars[i].style.transform = '';
+              if (bars[i]) {
+                bars[i].style.transform = '';
+                bars[i].style.animationName = '';
+              }
             }
           }
         }

@@ -3,6 +3,7 @@
 // Exporte aussi vers %AppData%\SysViewManager\Hardware.json (2 s).
 // =============================================================
 using LibreHardwareMonitor.Hardware;
+using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Text.Json;
 
@@ -44,6 +45,10 @@ public sealed class HardwareService : IDisposable
     private long   _prevRec, _prevSent;
     private double _prevNetTime;
 
+    // Compteurs Windows PDH pour le GPU (même source que le Gestionnaire des tâches)
+    private List<PerformanceCounter>? _gpuPdhCounters;
+    private bool _gpuPdhInit = false;
+
     private HardwareSnapshot _snap = new();
     private readonly object  _mu   = new();
     private readonly Thread  _thread;
@@ -81,6 +86,7 @@ public sealed class HardwareService : IDisposable
             Logger.Warn("LHM", "Fonctionnement en mode dégradé (valeurs CPU/GPU/RAM absentes)");
         }
 
+        InitGpuPdh();
         Poll();  // Premier poll synchrone (peuple le snapshot initial)
 
         _thread = new Thread(() => {
@@ -107,6 +113,11 @@ public sealed class HardwareService : IDisposable
                 foreach (var h in _hw.Hardware)
                     ReadHardware(h, s);
             }
+
+            // PDH GPU override : remplace la valeur LHM par la source WDDM
+            // (identique au Gestionnaire des tâches Windows)
+            var pdhGpu = ReadGpuUsagePdh();
+            if (pdhGpu.HasValue) s.GpuUsage = pdhGpu.Value;
 
             // Fallback réseau via NetworkInterface (si LHM network absent)
             if (s.NetDlKb == 0 && s.NetEthDlKb == 0)
@@ -208,6 +219,48 @@ public sealed class HardwareService : IDisposable
                 json, System.Text.Encoding.UTF8);
         }
         catch { }
+    }
+
+    // ─── GPU via compteurs Windows PDH (même méthode que le Gestionnaire des tâches) ──
+    // Task Manager lit \GPU Engine(*engtype_3D*)\Utilization Percentage — on fait pareil.
+
+    private void InitGpuPdh()
+    {
+        try
+        {
+            if (!PerformanceCounterCategory.Exists("GPU Engine")) return;
+            var cat       = new PerformanceCounterCategory("GPU Engine");
+            var instances = cat.GetInstanceNames();
+            _gpuPdhCounters = instances
+                .Where(n => n.Contains("engtype_3D", StringComparison.OrdinalIgnoreCase))
+                .Select(n => new PerformanceCounter("GPU Engine", "Utilization Percentage", n, true))
+                .ToList();
+            // Premier appel toujours 0 — sert juste à initialiser le compteur
+            foreach (var c in _gpuPdhCounters) { try { c.NextValue(); } catch { } }
+            _gpuPdhInit = true;
+            Logger.Info("LHM", $"GPU PDH : {_gpuPdhCounters.Count} instance(s) 3D trouvée(s) — source identique au Gestionnaire des tâches");
+        }
+        catch (Exception ex)
+        {
+            _gpuPdhCounters = null;
+            Logger.Warn("LHM", $"GPU PDH indisponible (fallback LHM) : {ex.Message}");
+        }
+    }
+
+    // Retourne la charge GPU 3D via PDH — correspondance Task Manager.
+    // Plusieurs instances si multi-GPU : on prend le max par LUID physique.
+    private float? ReadGpuUsagePdh()
+    {
+        if (!_gpuPdhInit || _gpuPdhCounters == null || _gpuPdhCounters.Count == 0)
+            return null;
+        float total = 0f;
+        int   ok    = 0;
+        foreach (var c in _gpuPdhCounters)
+        {
+            try { total += c.NextValue(); ok++; }
+            catch { }
+        }
+        return ok > 0 ? Math.Min(100f, total) : null;
     }
 
     private void ReadHardware(IHardware h, HardwareSnapshot s)
@@ -398,6 +451,8 @@ public sealed class HardwareService : IDisposable
         {
             Logger.Warn("LHM", $"Erreur à la fermeture LHM : {ex.Message}");
         }
+        if (_gpuPdhCounters != null)
+            foreach (var c in _gpuPdhCounters) { try { c.Dispose(); } catch { } }
     }
 
     // ── Visitor LHM (inner class) ─────────────────────────────────────────────

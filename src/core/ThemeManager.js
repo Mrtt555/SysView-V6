@@ -51,6 +51,22 @@ export class ThemeManager {
     if (p.accent2_color   !== undefined) r.style.setProperty('--s',  rgb(p.accent2_color));
     if (p.bg_color        !== undefined) r.style.setProperty('--bg', rgb(p.bg_color));
     if (p.text_color      !== undefined) r.style.setProperty('--tx', rgb(p.text_color));
+    if (p.bar_color       !== undefined) r.style.setProperty('--bar', rgb(p.bar_color));
+
+    if (p.font_family !== undefined) {
+      var fontMap = {
+        inter:     "'Inter', 'Segoe UI', system-ui, sans-serif",
+        segoe:     "'Segoe UI', system-ui, sans-serif",
+        roboto:    "'Roboto', 'Segoe UI', sans-serif",
+        poppins:   "'Poppins', 'Segoe UI', sans-serif",
+        montserrat:"'Montserrat', 'Segoe UI', sans-serif",
+        jetbrains: "'JetBrains Mono', 'Courier New', monospace",
+        consolas:  "'Consolas', 'Courier New', monospace",
+      };
+      var ff = fontMap[p.font_family.value] || fontMap.inter;
+      r.style.setProperty('--ff', ff);
+      document.body.style.fontFamily = ff;
+    }
 
     // ── Opacité globale ───────────────────────────────────────
     var opProp = p.Global_Opacity !== undefined ? p.Global_Opacity : p.panel_opacity;
@@ -96,7 +112,10 @@ export class ThemeManager {
     if (p.gpu_temp_hot  !== undefined) { var v3 = parseInt(p.gpu_temp_hot.value);  if (!isNaN(v3)) sv.cfg.gpuHot  = v3; }
     if (p.gpu_temp_crit !== undefined) { var v4 = parseInt(p.gpu_temp_crit.value); if (!isNaN(v4)) sv.cfg.gpuCrit = v4; }
 
-    if (p.show_disk_free !== undefined) sv.cfg.showDiskFree = !!p.show_disk_free.value;
+    if (p.show_disk_free !== undefined) {
+      sv.cfg.showDiskFree = !!p.show_disk_free.value;
+      sv._diskCache = {};
+    }
     if (p.weather_manual !== undefined) sv.sendWeatherConfig();
 
     var wiProp = p.Weather_Interval !== undefined ? p.Weather_Interval : p.weather_interval;

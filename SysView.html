@@ -113,12 +113,10 @@ tailwind.config = {
     <!-- Réseau -->
     <div class="mblk" id="blk-net" x-show="show.net">
       <div class="hw-label mb-1" x-text="T('network')">Réseau</div>
-      <div class="netrow">
+      <div class="netrows">
         <div class="netlabel" x-text="T('download')">▼ DL</div>
         <div class="btrack"><div class="bfill bf-b" id="net-dl-bar" style="width:0%"></div></div>
         <div class="netval" id="net-dl">0 <span class="netunit">ko/s</span></div>
-      </div>
-      <div class="netrow">
         <div class="netlabel" x-text="T('upload')">▲ UL</div>
         <div class="btrack"><div class="bfill bf-p" id="net-ul-bar" style="width:0%"></div></div>
         <div class="netval" id="net-ul">0 <span class="netunit">ko/s</span></div>

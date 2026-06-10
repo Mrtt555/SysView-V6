@@ -37,9 +37,13 @@ public sealed class MediaState
                 return;
             }
 
-            bool sourceChanged = _snap.Source != "smtc";
-            bool titleChanged  = _snap.Title  != title;
-            bool playingChanged= _snap.Playing != playing;
+            bool sourceChanged  = _snap.Source  != "smtc";
+            bool titleChanged   = _snap.Title   != title;
+            bool playingChanged = _snap.Playing  != playing;
+            // Only reset the interpolation origin when position genuinely jumps
+            // (seek, new track) — prevents FetchAsync thumbnail events from
+            // resetting LastUpdate and making the progress bar appear frozen.
+            bool positionJumped = titleChanged || Math.Abs(_snap.Position - position) > 1.5;
 
             _snap = new Snapshot
             {
@@ -52,7 +56,7 @@ public sealed class MediaState
                 Position   = position,
                 Duration   = duration,
                 ThumbUrl   = thumbUrl,
-                LastUpdate = now,
+                LastUpdate = positionJumped ? now : _snap.LastUpdate,
             };
 
             if (sourceChanged)
