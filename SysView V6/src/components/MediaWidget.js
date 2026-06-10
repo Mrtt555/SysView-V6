@@ -40,9 +40,16 @@ export function renderProgress(snap, mediaDur, mediaPos, bridgeOk) {
   if (mediaDur <= 0) {
     if (snap) {
       bar.style.width = '0%';
-      if (telEl) telEl.textContent = '';
-      if (ttEl)  ttEl.textContent  = '';
-      if (progRow) progRow.style.visibility = 'hidden';
+      if (mediaPos > 0) {
+        // Durée inconnue (DRM) mais position disponible → afficher le temps écoulé
+        if (telEl) telEl.textContent = fmtTime(mediaPos);
+        if (ttEl)  ttEl.textContent  = '—:—';
+        if (progRow) progRow.style.visibility = '';
+      } else {
+        if (telEl) telEl.textContent = '';
+        if (ttEl)  ttEl.textContent  = '';
+        if (progRow) progRow.style.visibility = 'hidden';
+      }
     }
     return;
   }

@@ -243,9 +243,11 @@ document.addEventListener('alpine:init', function() {
           this.mediaDur = d.duration; this.mediaPos = d.position;
           this._progPos = d.position; this._progTs = Date.now();
         } else if (titleChanged) {
-          this.mediaDur = 0; this.mediaPos = 0;
+          // Durée inconnue (DRM) : conserver la position si disponible (ex: Disney+)
+          var pos0 = d.position || 0;
+          this.mediaDur = 0; this.mediaPos = pos0;
           this._progPos = 0; this._progTs = 0;
-          renderProgress(true, 0, 0, this.bridgeOk);
+          renderProgress(true, 0, pos0, this.bridgeOk);
         }
       },
 

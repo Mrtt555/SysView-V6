@@ -25,6 +25,7 @@
 
 using System.Diagnostics;
 using System.Runtime.Versioning;
+using Windows.Media;
 using Windows.Media.Control;
 using Windows.Storage.Streams;
 
@@ -360,6 +361,18 @@ public sealed class SmtcService : IDisposable
             //     "Stranger Things | Netflix" → title="Stranger Things", service="Netflix"
             var (title, service) = ExtractStreamingService(rawTitle);
 
+            bool fromBrowser = IsFromBrowser(s.SourceAppUserModelId);
+
+            // Apps vidéo natives (Jellyfin, Plex, Emby…) : si le titre ne contient pas
+            // le suffixe service, on l'infère depuis l'AUMID pour activer le mode vidéo.
+            if (string.IsNullOrEmpty(service) && !fromBrowser)
+            {
+                string pl = DetectPlatform(s.SourceAppUserModelId, "");
+                string[] nativeVideoApps = ["Jellyfin", "Plex", "Emby", "Films & TV"];
+                if (Array.Exists(nativeVideoApps, v => v.Equals(pl, StringComparison.OrdinalIgnoreCase)))
+                    service = pl;
+            }
+
             // Artiste : si vide et service détecté, utiliser le service comme fallback
             // (Netflix, Prime Video, etc. ne fournissent pas d'artiste via SMTC)
             if (string.IsNullOrEmpty(artist) && !string.IsNullOrEmpty(service))
@@ -378,12 +391,13 @@ public sealed class SmtcService : IDisposable
                     thumbUrl       = _lastThumbUrl;
                     thumbFromCache = true;
                 }
-                else if (!string.IsNullOrEmpty(service) && !_smtcThumbTrustedServices.Contains(service))
+                else if (fromBrowser && !string.IsNullOrEmpty(service) && !_smtcThumbTrustedServices.Contains(service))
                 {
-                    // Streaming vidéo (Netflix, Disney+, Prime…) : le navigateur expose
+                    // Navigateur + service détecté (Disney+, Prime…) : le navigateur expose
                     // son icône d'application via SMTC, pas une vraie miniature.
+                    // Apps natives (Jellyfin, Plex…) conservent leur miniature SMTC (vrai poster).
                     // → Ignorer SMTC et chercher directement le poster en ligne.
-                    Logger.Debug("SMTC", $"  Service streaming [{service}] → recherche poster en ligne (pas de SMTC thumb)");
+                    Logger.Debug("SMTC", $"  Navigateur+service [{service}] → recherche poster en ligne (pas de SMTC thumb)");
                     thumbUrl = await FetchOnlineThumbAsync(title, artist, service);
                     thumbFromOnline = !string.IsNullOrEmpty(thumbUrl);
                     _lastThumbTitle = title;
@@ -467,11 +481,14 @@ public sealed class SmtcService : IDisposable
 
             string platform  = DetectPlatform(s.SourceAppUserModelId, service);
             // "youtube"  → miniature 16:9 fournie directement par SMTC
-            // "video"    → streaming (Netflix, Prime…) → poster portrait 2:3
-            // "music"    → musique / app locale / navigateur sans service
+            // "video"    → streaming identifié OU navigateur jouant de la vidéo (Netflix…)
+            // "music"    → musique / app locale / navigateur sans vidéo détectée
+            var playType = playback?.PlaybackType;
             string mediaType = service == "YouTube" ? "youtube"
                              : !string.IsNullOrEmpty(service) ? "video"
+                             : (fromBrowser && playType == MediaPlaybackType.Video) ? "video"
                              : "music";
+            Logger.Debug("SMTC", $"  type={mediaType}  service=[{service}]  platform={platform}  playType={playType}  fromBrowser={fromBrowser}");
             _media.UpdateFromSmtc(title, artist, platform, mediaType, playing, position, duration, thumbUrl);
         }
         finally
@@ -485,6 +502,16 @@ public sealed class SmtcService : IDisposable
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>Vrai si l'AUMID appartient à un navigateur web connu.</summary>
+    private static bool IsFromBrowser(string appId)
+    {
+        var id = appId.ToLowerInvariant();
+        return id.Contains("brave")    || id.Contains("msedge")   || id.Contains("edge")     ||
+               id.Contains("chrome")   || id.Contains("firefox")  || id.Contains("opera")    ||
+               id.Contains("vivaldi")  || id.Contains("thorium")  || id.Contains("chromium") ||
+               id.Contains("waterfox") || id.Contains("librewolf");
+    }
 
     /// <summary>
     /// Détecte le nom lisible de la plateforme depuis l'AppUserModelId SMTC.
@@ -529,6 +556,9 @@ public sealed class SmtcService : IDisposable
         if (id.Contains("lollypop"))                                      return "Lollypop";
         if (id.Contains("dopamine"))                                      return "Dopamine";
         if (id.Contains("plexamp"))                                       return "Plexamp";
+        if (id.Contains("jellyfin"))                                      return "Jellyfin";
+        if (id.Contains("plex"))                                          return "Plex";
+        if (id.Contains("emby"))                                          return "Emby";
         if (id.Contains("itunes"))                                        return "iTunes";
         if (id.Contains("wmplayer"))                                      return "Windows Media Player";
         if (id.Contains("groove") || id.Contains("zune"))                return "Groove Music";
