@@ -139,7 +139,7 @@ async function fetchPerf() {
         _raw.gt  = d.gpu.temp != null ? d.gpu.temp : null;
         if (d.gpu.name) _raw.gpuName = d.gpu.name;
       }
-      if (d.ram)  { _raw.ram  = d.ram.used_mb   || 0; _raw.ramTotal  = d.ram.total_mb   || 32768; }
+      if (d.ram)  { _raw.ram  = d.ram.used_mb   || 0; _raw.ramTotal  = d.ram.total_mb   || 0; }
       if (d.vram) { _raw.vram = d.vram.used_mb  || 0; _raw.vramTotal = d.vram.total_mb  || 0; }
       if (d.network) { _raw.dl = d.network.download_kb || 0; _raw.ul = d.network.upload_kb || 0; }
       if (d.disks) {

@@ -97,7 +97,7 @@ document.addEventListener('alpine:init', function() {
       mediaPos:0,    mediaDur:0,
       _lastTitle:'', _lastThumb:'', _mediaGoneAt:0, _pausedSince:0,
       _progPos:0, _progTs:0,
-      _vizBars: null,   _audioSilent: 0,
+      _vizBars: null,   _audioBins: null,   _audioSilent: 0,
 
       bridgeOk:    false,
       _worker:     null,
@@ -299,15 +299,23 @@ document.addEventListener('alpine:init', function() {
           viz.appendChild(b);
         }
         this._vizBars = viz.querySelectorAll('.viz-bar');
+        // Bornes de bins constantes — précalculées une seule fois ici
+        var bins = [];
+        for (var j = 0; j < 24; j++) {
+          var s = Math.floor(j * 64 / 24);
+          var e = Math.floor((j + 1) * 64 / 24);
+          bins.push([s, e <= s ? s + 1 : e]);
+        }
+        this._audioBins = bins;
       },
 
       _onAudio(audioArray) {
         var bars = this._vizBars;
-        if (!bars) return;
+        var bins = this._audioBins;
+        if (!bars || !bins) return;
         var anySound = false;
         for (var i = 0; i < 24; i++) {
-          var s = Math.floor(i * 64 / 24), e = Math.floor((i + 1) * 64 / 24);
-          if (e <= s) e = s + 1;
+          var s = bins[i][0], e = bins[i][1];
           var peak = 0;
           for (var j = s; j < e; j++) { if ((audioArray[j] || 0) > peak) peak = audioArray[j]; }
           var a = peak > this._audioEma[i] ? 0.80 : 0.18;
@@ -342,8 +350,8 @@ document.addEventListener('alpine:init', function() {
         this.mediaDur    = 0;
 
         setInterval(function() {
-          if (self.bridgeOk && self._lastTitle)  return;
-          if (self.bridgeOk && !self._lastTitle) return;
+          // Arrêter si un vrai média joue ; sinon tourner (pas de bridge ou bridge sans média)
+          if (self.bridgeOk && self._lastTitle) return;
           idx = (idx + 1) % demo.length;
           self.mediaTitle  = demo[idx].title;
           self.mediaArtist = demo[idx].artist;

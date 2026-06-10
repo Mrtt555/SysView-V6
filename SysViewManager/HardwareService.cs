@@ -235,6 +235,7 @@ public sealed class HardwareService : IDisposable
         "engtype_3D", "engtype_Copy", "engtype_Compute",
         "engtype_VideoDecode", "engtype_VideoEncode", "engtype_VideoProcessing",
         "engtype_SceneAssembly", "engtype_Overlay", "engtype_Crypto", "engtype_VR",
+        "engtype_RayTracing", "engtype_Media",  // Intel Arc, futurs AMD/NVIDIA
     ];
 
     private static bool IsWorkloadEngine(string instanceName) =>

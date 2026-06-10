@@ -115,6 +115,11 @@ public sealed class SmtcService : IDisposable
         return (raw, "");
     }
 
+    // Services pour lesquels SMTC fournit de vraies miniatures (pas une icône navigateur).
+    // Tous les autres services streaming skippent SMTC et cherchent le poster en ligne.
+    private static readonly HashSet<string> _smtcThumbTrustedServices =
+        new(StringComparer.OrdinalIgnoreCase) { "YouTube" };
+
     // Indique que MediaPropertiesChanged vient de se déclencher :
     // la miniature DOIT être re-lue même si le titre n'a pas changé
     // (Brave/Chrome fournit d'abord l'icône de l'app, puis la miniature réelle).
@@ -347,6 +352,8 @@ public sealed class SmtcService : IDisposable
             double duration = timeline?.EndTime.TotalSeconds  ?? 0;
             // Certains navigateurs (Disney+, Netflix…) exposent MaxSeekTime au lieu de EndTime
             if (duration <= 0) duration = timeline?.MaxSeekTime.TotalSeconds ?? 0;
+            // Guard : TimeSpan.MaxValue (~9.2e18 s) ou valeur sentinelle live → on ignore
+            if (duration > 86400 * 365) duration = 0;
 
             // ── Nettoyage du titre (services de streaming) ────────────────────
             // Ex: "Prime Video: The Boys" → title="The Boys", service="Prime Video"
@@ -371,7 +378,7 @@ public sealed class SmtcService : IDisposable
                     thumbUrl       = _lastThumbUrl;
                     thumbFromCache = true;
                 }
-                else if (!string.IsNullOrEmpty(service) && service != "YouTube")
+                else if (!string.IsNullOrEmpty(service) && !_smtcThumbTrustedServices.Contains(service))
                 {
                     // Streaming vidéo (Netflix, Disney+, Prime…) : le navigateur expose
                     // son icône d'application via SMTC, pas une vraie miniature.

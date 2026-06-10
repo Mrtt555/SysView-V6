@@ -3,6 +3,8 @@
 // Rendu et logique du panneau média (SMTC / album art / progress).
 // Exports : fmtArtist, fmtTime, renderProgress, setAlbumArt, showIdleAnim
 // =============================================================
+import { fmtTime } from './MonitoringWidget.js';
+export { fmtTime }; // ré-exporté pour les consommateurs (app.js)
 
 // ─── Services connus (ne pas décomposer le nom) ───────────────
 var KNOWN_SVC = [
@@ -25,17 +27,6 @@ export function fmtArtist(artist, title) {
     if (dash > 0 && dash < 60) return title.substring(0, dash);
   }
   return artist;
-}
-
-// ─── Formate une durée en secondes → "m:ss" ou "h:mm:ss" ─────
-export function fmtTime(sec) {
-  sec = Math.floor(Math.max(0, sec) || 0);
-  var h = Math.floor(sec / 3600);
-  var m = Math.floor((sec % 3600) / 60);
-  var s = sec % 60;
-  function pad(n) { return String(n).padStart(2, '0'); }
-  if (h > 0) return h + ':' + pad(m) + ':' + pad(s);
-  return m + ':' + pad(s);
 }
 
 // ─── Met à jour la barre de progression et les timestamps ─────

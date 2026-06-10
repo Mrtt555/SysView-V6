@@ -125,7 +125,10 @@ export class ThemeManager {
       var bm = document.getElementById('blk-meteo');
       if (bm) bm.classList.toggle('hide-source', !sv.cfg.showWeatherSource);
     }
-    if (p.temp_unit     !== undefined) sv.cfg.tempUnit    = p.temp_unit.value;
+    if (p.temp_unit !== undefined) {
+      sv.cfg.tempUnit = p.temp_unit.value;
+      if (sv._rebuildWeather) sv._rebuildWeather();
+    }
     if (p.temp_decimal  !== undefined) {
       sv.cfg.tempDecimal = !!p.temp_decimal.value;
       if (sv._rebuildWeather) sv._rebuildWeather();
