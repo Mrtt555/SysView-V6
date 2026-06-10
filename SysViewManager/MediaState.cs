@@ -23,6 +23,13 @@ public sealed class MediaState
 
     public Snapshot Get() { lock (_mu) return _snap; }
 
+    // Version sans verrou — à appeler uniquement depuis un bloc lock(_mu).
+    private bool IsExtActiveNoLock()
+    {
+        double now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
+        return _extLastSeen > 0 && (now - _extLastSeen) < 5.0;
+    }
+
     // ─── Mise à jour depuis SMTC ─────────────────────────────────────────────
 
     public void UpdateFromSmtc(string title, string artist, string platform, string mediaType,
@@ -30,6 +37,13 @@ public sealed class MediaState
     {
         lock (_mu)
         {
+            // Extension active → elle est prioritaire sur toute source SMTC.
+            if (IsExtActiveNoLock())
+            {
+                Logger.Debug("Media", $"SMTC ignoré — extension active (\"{_snap.Title}\")");
+                return;
+            }
+
             double now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
 
             if (string.IsNullOrEmpty(title))
@@ -158,7 +172,8 @@ public sealed class MediaState
     {
         lock (_mu)
         {
-            _extLastSeen = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
+            // Réinitialiser _extLastSeen → SMTC peut reprendre immédiatement
+            _extLastSeen = 0;
             if (_snap.Source == "ext")
             {
                 _snap = new Snapshot();
@@ -168,15 +183,11 @@ public sealed class MediaState
     }
 
     /// <summary>
-    /// Vrai si l'extension a envoyé des données dans les 5 dernières secondes.
-    /// Utilisé par SmtcService pour ignorer les sessions navigateur (moins précises).
+    /// Vrai si l'extension a envoyé des données réelles dans les 5 dernières secondes.
     /// </summary>
     public bool IsExtActive()
     {
         lock (_mu)
-        {
-            double now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
-            return _extLastSeen > 0 && (now - _extLastSeen) < 5.0;
-        }
+            return IsExtActiveNoLock();
     }
 }
