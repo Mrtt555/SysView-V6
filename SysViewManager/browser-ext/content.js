@@ -138,8 +138,8 @@
     try { chrome.runtime.sendMessage(msg); } catch (e) {}
   }
 
-  // Polling 1/s + événements vidéo
-  setInterval(poll, 1000);
+  // Polling 500ms + événements vidéo
+  setInterval(poll, 500);
   document.addEventListener('play',           poll, true);
   document.addEventListener('pause',          poll, true);
   document.addEventListener('ended',          poll, true);

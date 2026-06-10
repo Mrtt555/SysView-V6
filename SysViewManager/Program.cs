@@ -69,44 +69,22 @@ static class Program
         // ── Services ──────────────────────────────────────────────────────────
         Logger.Info("Program", "Initialisation des services...");
 
-        Logger.Info("Program", "  [1/5] RuntimeConfig...");
+        Logger.Info("Program", "  [1/4] RuntimeConfig...");
         var rtCfg = new RuntimeConfig(AppDataDir);
 
-        Logger.Info("Program", "  [2/5] HardwareService (LHM)...");
+        Logger.Info("Program", "  [2/4] HardwareService (LHM)...");
         using var hwSvc = new HardwareService(AppDataDir);
 
-        Logger.Info("Program", "  [3/5] DiskService...");
+        Logger.Info("Program", "  [3/4] DiskService...");
         var diskSvc = new DiskService();
 
-        Logger.Info("Program", "  [4/5] WeatherService (Open-Meteo)...");
+        Logger.Info("Program", "  [4/4] WeatherService + MediaState...");
         using var weather = new WeatherService(rtCfg, AppDataDir);
-
-        Logger.Info("Program", "  [5/5] MediaState...");
         var media = new MediaState();
-
-        // ── TMDB — poster images pour les services de streaming (clé optionnelle) ──
-        using var tmdb = new TmdbService();
-        tmdb.Configure(rtCfg.TmdbApiKey);
-
-        // ── MusicArt — pochettes sans clé API (Deezer + iTunes + MusicBrainz) ──
-        using var musicArt = new MusicArtService();
-
-        // ── SMTC — détection native du média en cours ─────────────────────────
-        var cts    = new CancellationTokenSource();
-        SmtcService? smtc = null;
-        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763))
-        {
-            Logger.Info("Program", "SMTC : Windows 10 1809+ détecté — démarrage du service...");
-            smtc = new SmtcService(media, tmdb, musicArt);
-            _ = smtc.StartAsync(cts.Token);
-        }
-        else
-        {
-            Logger.Warn("Program", $"SMTC : Windows {Environment.OSVersion.Version} trop ancien (< 17763) — désactivé");
-        }
 
         // ── Bridge HTTP (ASP.NET Core) sur thread background ─────────────────
         Logger.Info("Program", "BridgeServer : démarrage du serveur HTTP...");
+        var cts    = new CancellationTokenSource();
         var bridge = new BridgeServer(hwSvc, diskSvc, weather, media, rtCfg);
         var srv    = Task.Run(() => bridge.RunAsync(cts.Token));
 
@@ -121,7 +99,6 @@ static class Program
         Logger.Info("Program", "=== SysView V6 arrêt ===");
         Logger.Info("Program", "Annulation des services...");
         cts.Cancel();
-        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763)) smtc?.Dispose();
         try { srv.Wait(TimeSpan.FromSeconds(3)); } catch { }
         Logger.Info("Program", "Arrêt propre terminé.");
         Logger.Separator("Program");

@@ -1,7 +1,5 @@
 // =============================================================
-// MediaState — état média partagé
-// Sources : SMTC (apps natives) · Extension navigateur (Netflix…)
-// L'extension a la priorité sur SMTC pour le contenu navigateur.
+// MediaState — état média partagé (source unique : extension navigateur)
 // =============================================================
 
 namespace SysViewManager;
@@ -18,105 +16,14 @@ public sealed class MediaState
     private Snapshot     _snap = new();
     private readonly object _mu = new();
 
-    // Timestamp de la dernière donnée extension (ms → s)
-    private double _extLastSeen = 0;
-
     public Snapshot Get() { lock (_mu) return _snap; }
 
-    // Version sans verrou — à appeler uniquement depuis un bloc lock(_mu).
-    private bool IsExtActiveNoLock()
-    {
-        double now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
-        return _extLastSeen > 0 && (now - _extLastSeen) < 5.0;
-    }
-
-    // ─── Mise à jour depuis SMTC ─────────────────────────────────────────────
-
-    public void UpdateFromSmtc(string title, string artist, string platform, string mediaType,
-                                bool playing, double position, double duration, string thumbUrl)
-    {
-        lock (_mu)
-        {
-            // Extension active → elle est prioritaire sur toute source SMTC.
-            if (IsExtActiveNoLock())
-            {
-                Logger.Debug("Media", $"SMTC ignoré — extension active (\"{_snap.Title}\")");
-                return;
-            }
-
-            double now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
-
-            if (string.IsNullOrEmpty(title))
-            {
-                if (_snap.Source == "smtc")
-                {
-                    Logger.Info("Media", "SMTC : titre vide — état réinitialisé");
-                    _snap = new Snapshot();
-                }
-                return;
-            }
-
-            bool sourceChanged  = _snap.Source  != "smtc";
-            bool titleChanged   = _snap.Title   != title;
-            bool playingChanged = _snap.Playing  != playing;
-            // Only reset the interpolation origin when position genuinely jumps
-            // (seek, new track) — prevents FetchAsync thumbnail events from
-            // resetting LastUpdate and making the progress bar appear frozen.
-            bool positionJumped = titleChanged || Math.Abs(_snap.Position - position) > 1.5;
-
-            _snap = new Snapshot
-            {
-                Title      = title,
-                Artist     = artist,
-                Platform   = platform,
-                MediaType  = mediaType,
-                Source     = "smtc",
-                Playing    = playing,
-                Position   = position,
-                Duration   = duration,
-                ThumbUrl   = thumbUrl,
-                LastUpdate = positionJumped ? now : _snap.LastUpdate,
-            };
-
-            if (sourceChanged)
-                Logger.Info("Media", $"Source → SMTC | {(playing ? "▶" : "⏸")} \"{title}\" — {artist}");
-            else if (titleChanged)
-                Logger.Info("Media", $"SMTC : nouveau titre — {(playing ? "▶" : "⏸")} \"{title}\" — {artist}");
-            else if (playingChanged)
-                Logger.Info("Media", $"SMTC : état {(playing ? "▶ lecture" : "⏸ pause")} — \"{title}\"");
-            else
-                Logger.Debug("Media", $"SMTC : position — {position:F0}s / {duration:F0}s");
-        }
-    }
-
-    /// <summary>
-    /// Efface l'état SMTC (session terminée ou plus aucun lecteur actif).
-    /// </summary>
-    public void ClearSmtc()
-    {
-        lock (_mu)
-        {
-            if (_snap.Source == "smtc")
-            {
-                Logger.Info("Media", $"SMTC : session terminée — état réinitialisé (était : \"{_snap.Title}\")");
-                _snap = new Snapshot();
-            }
-        }
-    }
-
-    // ─── Source : Extension navigateur ──────────────────────────────────────
-
-    /// <summary>
-    /// Mise à jour depuis l'extension navigateur (priorité sur SMTC pour les onglets actifs).
-    /// Fournit la vraie durée, position et les métadonnées Media Session directement depuis la page.
-    /// </summary>
-    public void UpdateFromExt(string title, string artist, string service, string host,
-                               bool playing, int position, int duration, string artworkUrl)
+    public void Update(string title, string artist, string service, string host,
+                       bool playing, int position, int duration, string artworkUrl)
     {
         lock (_mu)
         {
             double now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
-            _extLastSeen = now;
 
             if (string.IsNullOrEmpty(title))
             {
@@ -128,7 +35,6 @@ public sealed class MediaState
                 return;
             }
 
-            bool sourceChanged  = _snap.Source  != "ext";
             bool titleChanged   = _snap.Title   != title;
             bool playingChanged = _snap.Playing  != playing;
             bool positionJumped = titleChanged || Math.Abs(_snap.Position - position) > 1.5;
@@ -154,40 +60,24 @@ public sealed class MediaState
                 LastUpdate = positionJumped ? now : _snap.LastUpdate,
             };
 
-            if (sourceChanged)
-                Logger.Info("Media", $"Source → Extension | {(playing ? "▶" : "⏸")} \"{title}\" [{platform}]");
-            else if (titleChanged)
-                Logger.Info("Media", $"Extension : nouveau titre — {(playing ? "▶" : "⏸")} \"{title}\" [{platform}]");
+            if (titleChanged)
+                Logger.Info("Media", $"{(playing ? "▶" : "⏸")} \"{title}\" [{platform}]");
             else if (playingChanged)
-                Logger.Info("Media", $"Extension : {(playing ? "▶ lecture" : "⏸ pause")} — \"{title}\"");
+                Logger.Info("Media", $"{(playing ? "▶ lecture" : "⏸ pause")} — \"{title}\"");
             else
-                Logger.Debug("Media", $"Extension : position — {position}s / {duration}s  [{platform}]");
+                Logger.Debug("Media", $"position — {position}s / {duration}s  [{platform}]");
         }
     }
 
-    /// <summary>
-    /// Efface l'état extension (plus aucun onglet avec média actif).
-    /// </summary>
-    public void ClearExt()
+    public void Clear()
     {
         lock (_mu)
         {
-            // Réinitialiser _extLastSeen → SMTC peut reprendre immédiatement
-            _extLastSeen = 0;
             if (_snap.Source == "ext")
             {
                 _snap = new Snapshot();
                 Logger.Info("Media", "Extension : aucun onglet actif — état réinitialisé");
             }
         }
-    }
-
-    /// <summary>
-    /// Vrai si l'extension a envoyé des données réelles dans les 5 dernières secondes.
-    /// </summary>
-    public bool IsExtActive()
-    {
-        lock (_mu)
-            return IsExtActiveNoLock();
     }
 }

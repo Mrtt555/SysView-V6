@@ -312,7 +312,7 @@ public sealed class BridgeServer
 
                 if (type == "no_media")
                 {
-                    _media.ClearExt();
+                    _media.Clear();
                     return Results.Ok(new { ok = true });
                 }
 
@@ -325,7 +325,7 @@ public sealed class BridgeServer
                 int    duration = json["duration"]?.GetValue<int>()    ?? 0;
                 string artwork  = json["artwork"]?.GetValue<string>()  ?? "";
 
-                _media.UpdateFromExt(title, artist, service, host, playing, position, duration, artwork);
+                _media.Update(title, artist, service, host, playing, position, duration, artwork);
                 return Results.Ok(new { ok = true });
             }
             catch (Exception ex)
