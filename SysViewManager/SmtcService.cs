@@ -77,6 +77,10 @@ public sealed class SmtcService : IDisposable
         (" | Jellyfin",          false, "Jellyfin"),
         (" — Jellyfin",          false, "Jellyfin"),
         (" | HBO Max",           false, "HBO Max"),
+
+        // ── YouTube — miniatures paysage 16:9 via SMTC ────────────────────
+        (" - YouTube",           false, "YouTube"),
+        (" | YouTube",           false, "YouTube"),
     };
 
     /// <summary>
@@ -440,9 +444,12 @@ public sealed class SmtcService : IDisposable
             }
 
             string platform  = DetectPlatform(s.SourceAppUserModelId, service);
-            // "video" si un service de streaming a été détecté dans le titre du navigateur,
-            // "music" pour tout le reste (Spotify, lecteurs locaux, apps inconnues).
-            string mediaType = !string.IsNullOrEmpty(service) ? "video" : "music";
+            // "youtube"  → miniature 16:9 fournie directement par SMTC
+            // "video"    → streaming (Netflix, Prime…) → poster portrait 2:3
+            // "music"    → musique / app locale / navigateur sans service
+            string mediaType = service == "YouTube" ? "youtube"
+                             : !string.IsNullOrEmpty(service) ? "video"
+                             : "music";
             _media.UpdateFromSmtc(title, artist, platform, mediaType, playing, position, duration, thumbUrl);
         }
         finally

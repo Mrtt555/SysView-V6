@@ -215,9 +215,12 @@ document.addEventListener('alpine:init', function() {
         this.mediaType     = d.media_type || '';
         // Artiste : canal YouTube / artiste Spotify / nom service → fallback plateforme
         this.mediaArtist   = fmtArtist(d.artist || '', d.title || '') || d.platform || '';
-        // Ratio du cadre : carré pour musique, portrait 2:3 pour streaming vidéo
+        // Ratio du cadre selon le type : carré musique / portrait vidéo / paysage YouTube
         var mart = document.querySelector('.mart');
-        if (mart) mart.classList.toggle('mart--video', this.mediaType === 'video');
+        if (mart) {
+          mart.classList.toggle('mart--video',     this.mediaType === 'video');
+          mart.classList.toggle('mart--landscape', this.mediaType === 'youtube');
+        }
         this.mediaPlaying  = !!d.playing;
 
         if (d.thumb_url && d.thumb_url !== this._lastThumb) {
@@ -258,7 +261,7 @@ document.addEventListener('alpine:init', function() {
         this.mediaTitle = ''; this.mediaArtist = ''; this.mediaType = '';
         this.mediaPlaying = false; this.mediaDur = 0; this.mediaPos = 0;
         var mart = document.querySelector('.mart');
-        if (mart) mart.classList.remove('mart--video');
+        if (mart) { mart.classList.remove('mart--video'); mart.classList.remove('mart--landscape'); }
         var img = document.getElementById('media-art-img');
         if (img) img.style.opacity = 0;
         showIdleAnim();

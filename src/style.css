@@ -326,6 +326,11 @@ html, body {
 .mart.mart--video {
   max-width: calc(72px * var(--sz));
 }
+.mart.mart--landscape {
+  /* YouTube : miniature 16:9 — largeur × hauteur = 192:108 */
+  max-width: calc(192px * var(--sz));
+  min-width: calc(192px * var(--sz));
+}
 #media-art-img {
   position: absolute; inset: 0; width: 100%; height: 100%;
   object-fit: cover; opacity: 0; transition: opacity .18s;
