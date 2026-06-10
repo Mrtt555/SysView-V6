@@ -32,8 +32,9 @@ namespace SysViewManager;
 [SupportedOSPlatform("windows10.0.17763.0")]
 public sealed class SmtcService : IDisposable
 {
-    private readonly MediaState  _media;
-    private readonly TmdbService? _tmdb;
+    private readonly MediaState      _media;
+    private readonly TmdbService?    _tmdb;
+    private readonly MusicArtService? _musicArt;
 
     private GlobalSystemMediaTransportControlsSessionManager? _mgr;
     private GlobalSystemMediaTransportControlsSession? _session;
@@ -119,11 +120,14 @@ public sealed class SmtcService : IDisposable
     // Sémaphore 1-1 : empêche les FetchAsync concurrents
     private readonly SemaphoreSlim _sem = new(1, 1);
 
-    public SmtcService(MediaState media, TmdbService? tmdb = null)
+    public SmtcService(MediaState media, TmdbService? tmdb = null, MusicArtService? musicArt = null)
     {
-        _media = media;
-        _tmdb  = tmdb;
-        Logger.Info("SMTC", "Service créé" + (tmdb?.IsConfigured == true ? " [TMDB actif]" : ""));
+        _media    = media;
+        _tmdb     = tmdb;
+        _musicArt = musicArt;
+        Logger.Info("SMTC", "Service créé"
+            + (tmdb?.IsConfigured == true ? " [TMDB actif]" : "")
+            + (musicArt != null            ? " [MusicArt actif]" : ""));
     }
 
     // ─── Démarrage ───────────────────────────────────────────────────────────
@@ -348,14 +352,11 @@ public sealed class SmtcService : IDisposable
             // ── Miniature ─────────────────────────────────────────────────────
             string thumbUrl       = "";
             bool   thumbFromCache = false;
-            bool   thumbFromTmdb  = false;
+            bool   thumbFromOnline = false;
 
             if (!string.IsNullOrEmpty(title))
             {
-                // Utiliser le cache seulement si :
-                //   • le titre n'a pas changé (même morceau/vidéo)
-                //   • ET aucun MediaPropertiesChanged n'a demandé de relecture
-                //     (forceThumb = false → cas timeline / playback uniquement)
+                // Cache : réutiliser si même titre ET pas de relecture forcée
                 if (!forceThumb && title == _lastThumbTitle)
                 {
                     thumbUrl       = _lastThumbUrl;
@@ -367,7 +368,6 @@ public sealed class SmtcService : IDisposable
                     try
                     {
                         using var ras = await thumb.OpenReadAsync();
-                        // Respecter le content-type fourni par l'app (JPEG, PNG, …)
                         string ct = ras.ContentType;
                         if (string.IsNullOrEmpty(ct)) ct = "image/jpeg";
 
@@ -375,53 +375,41 @@ public sealed class SmtcService : IDisposable
                         await ras.AsStreamForRead().CopyToAsync(ms);
                         swThumb.Stop();
 
-                        // Seuil minimal : < 5 Ko = favicon / icône d'app (Brave 32 px ≈ 1-3 Ko).
-                        // Album art / thumbnail vidéo : toujours > 10 Ko en pratique.
+                        // < 5 Ko = favicon / icône navigateur → rejeter, chercher en ligne
                         const int MinThumbBytes = 5120;
 
                         if (ms.Length >= MinThumbBytes)
                         {
-                            thumbUrl        = $"data:{ct};base64," + Convert.ToBase64String(ms.ToArray());
-                            _lastThumbTitle = title;
-                            _lastThumbUrl   = thumbUrl;
-                            Logger.Debug("SMTC", $"  Miniature encodée : {ct}  {ms.Length / 1024} Ko  {swThumb.ElapsedMilliseconds} ms");
-                        }
-                        else if (ms.Length == 0)
-                        {
-                            Logger.Warn("SMTC", $"  Miniature vide (0 octet) — app={s.SourceAppUserModelId}");
-                            thumbUrl = await TryTmdbAsync(title, service);
-                            thumbFromTmdb = !string.IsNullOrEmpty(thumbUrl);
-                            _lastThumbTitle = title;
-                            _lastThumbUrl   = thumbUrl;
+                            thumbUrl = $"data:{ct};base64," + Convert.ToBase64String(ms.ToArray());
+                            Logger.Debug("SMTC", $"  Miniature SMTC : {ct}  {ms.Length / 1024} Ko  {swThumb.ElapsedMilliseconds} ms");
                         }
                         else
                         {
-                            Logger.Debug("SMTC", $"  Miniature trop petite ({ms.Length} o < {MinThumbBytes} o) → icône ignorée, tentative TMDB");
-                            thumbUrl = await TryTmdbAsync(title, service);
-                            thumbFromTmdb = !string.IsNullOrEmpty(thumbUrl);
-                            _lastThumbTitle = title;
-                            _lastThumbUrl   = thumbUrl;
+                            Logger.Debug("SMTC", ms.Length == 0
+                                ? $"  Miniature vide → recherche en ligne"
+                                : $"  Miniature trop petite ({ms.Length} o, probablement favicon) → recherche en ligne");
+                            thumbUrl = await FetchOnlineThumbAsync(title, artist, service);
+                            thumbFromOnline = !string.IsNullOrEmpty(thumbUrl);
                         }
                     }
                     catch (Exception ex)
                     {
                         swThumb.Stop();
-                        Logger.Warn("SMTC", $"  Miniature illisible ({swThumb.ElapsedMilliseconds} ms) : {ex.Message}");
-                        thumbUrl = await TryTmdbAsync(title, service);
-                        thumbFromTmdb = !string.IsNullOrEmpty(thumbUrl);
-                        _lastThumbTitle = title;
-                        _lastThumbUrl   = thumbUrl;
+                        Logger.Warn("SMTC", $"  Miniature illisible ({swThumb.ElapsedMilliseconds} ms) → recherche en ligne : {ex.Message}");
+                        thumbUrl = await FetchOnlineThumbAsync(title, artist, service);
+                        thumbFromOnline = !string.IsNullOrEmpty(thumbUrl);
                     }
+
+                    _lastThumbTitle = title;
+                    _lastThumbUrl   = thumbUrl;
                 }
                 else
                 {
-                    // Pas de miniature fournie par l'app (Thumbnail == null)
-                    // → typique pour les services DRM (Netflix, Prime Video…)
-                    // → tentative de récupération du poster via TMDB
-                    thumbUrl = await TryTmdbAsync(title, service);
-                    thumbFromTmdb = !string.IsNullOrEmpty(thumbUrl);
-                    if (!thumbFromTmdb)
-                        Logger.Debug("SMTC", $"  Pas de miniature pour \"{title}\" (source={s.SourceAppUserModelId})");
+                    // Pas de Thumbnail SMTC (DRM, VLC sans art, etc.) → en ligne
+                    thumbUrl = await FetchOnlineThumbAsync(title, artist, service);
+                    thumbFromOnline = !string.IsNullOrEmpty(thumbUrl);
+                    if (!thumbFromOnline)
+                        Logger.Debug("SMTC", $"  Aucune pochette pour \"{title}\" (source={s.SourceAppUserModelId})");
                     _lastThumbTitle = title;
                     _lastThumbUrl   = thumbUrl;
                 }
@@ -439,9 +427,9 @@ public sealed class SmtcService : IDisposable
                 _lastLoggedAppId = s.SourceAppUserModelId;
                 if (!string.IsNullOrEmpty(title))
                 {
-                    string thumbLabel = thumbFromCache ? "[miniature: cache]"
-                                      : thumbFromTmdb  ? "[miniature: TMDB]"
-                                      : !string.IsNullOrEmpty(thumbUrl) ? "[miniature: encodée]"
+                    string thumbLabel = thumbFromCache   ? "[miniature: cache]"
+                                      : thumbFromOnline ? "[miniature: en ligne]"
+                                      : !string.IsNullOrEmpty(thumbUrl) ? "[miniature: SMTC]"
                                       : "[sans miniature]";
                     string serviceLabel = !string.IsNullOrEmpty(service) ? $" [{service}]" : "";
                     Logger.Info("SMTC", $"Média : {(playing ? "▶" : "⏸")} \"{title}\"{serviceLabel} — {artist}  {thumbLabel}  (source={s.SourceAppUserModelId})");
@@ -593,17 +581,25 @@ public sealed class SmtcService : IDisposable
     }
 
     /// <summary>
-    /// Tente de récupérer un poster TMDB pour le titre donné.
-    /// Ne fait rien si TMDB n'est pas configuré ou si ce n'est pas un service de streaming.
+    /// Orchestre la récupération de miniature en ligne selon le type de contenu :
+    ///   • Service vidéo identifié (Netflix, Prime…) → TMDB (poster haute qualité)
+    ///   • Musique / app locale / navigateur générique → MusicArt (Deezer → iTunes → MusicBrainz)
+    /// Retourne une URL directe CDN ou "" si introuvable.
     /// </summary>
-    private async Task<string> TryTmdbAsync(string title, string service)
+    private async Task<string> FetchOnlineThumbAsync(string title, string artist, string service)
     {
-        if (_tmdb == null || !_tmdb.IsConfigured) return "";
-        // N'interroger TMDB que pour les services de streaming identifiés
-        // (pas pour les lectures locales, Spotify Web, etc.)
-        if (string.IsNullOrEmpty(service)) return "";
+        // Streaming vidéo avec service connu → TMDB en priorité
+        if (!string.IsNullOrEmpty(service) && _tmdb?.IsConfigured == true)
+        {
+            var poster = await _tmdb.GetPosterAsync(title);
+            if (!string.IsNullOrEmpty(poster)) return poster;
+        }
 
-        return await _tmdb.GetPosterAsync(title);
+        // Tout le reste (musique, apps locales, navigateur sans service) → MusicArt
+        if (_musicArt != null)
+            return await _musicArt.GetArtworkAsync(artist, title);
+
+        return "";
     }
 
     private static string StatusLabel(GlobalSystemMediaTransportControlsSession s)

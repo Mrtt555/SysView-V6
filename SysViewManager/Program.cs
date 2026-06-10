@@ -84,9 +84,12 @@ static class Program
         Logger.Info("Program", "  [5/5] MediaState...");
         var media = new MediaState();
 
-        // ── TMDB — poster images pour les services de streaming ───────────────
+        // ── TMDB — poster images pour les services de streaming (clé optionnelle) ──
         using var tmdb = new TmdbService();
         tmdb.Configure(rtCfg.TmdbApiKey);
+
+        // ── MusicArt — pochettes sans clé API (Deezer + iTunes + MusicBrainz) ──
+        using var musicArt = new MusicArtService();
 
         // ── SMTC — détection native du média en cours ─────────────────────────
         var cts    = new CancellationTokenSource();
@@ -94,7 +97,7 @@ static class Program
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763))
         {
             Logger.Info("Program", "SMTC : Windows 10 1809+ détecté — démarrage du service...");
-            smtc = new SmtcService(media, tmdb);
+            smtc = new SmtcService(media, tmdb, musicArt);
             _ = smtc.StartAsync(cts.Token);
         }
         else
