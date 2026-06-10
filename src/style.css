@@ -395,6 +395,12 @@ html, body {
   background: linear-gradient(180deg, rgba(var(--s),.88) 0%, rgba(var(--p),.22) 100%);
   transform-origin: bottom center;
   height: calc(90px * var(--sz));
-  transform: scaleY(0);
-  transition: transform .06s ease;
+  /* Animation idle CSS — JS override via style.transform quand WE fournit l'audio */
+  animation: viz-idle 2.2s ease-in-out infinite;
+  animation-delay: var(--vd, 0ms);
+  will-change: transform;
+}
+@keyframes viz-idle {
+  0%, 100% { transform: scaleY(0.04); }
+  50%       { transform: scaleY(0.18); }
 }

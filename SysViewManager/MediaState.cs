@@ -8,7 +8,7 @@ public sealed class MediaState
 {
     public sealed class Snapshot
     {
-        public string Title = "", Artist = "", Source = "", ThumbUrl = "";
+        public string Title = "", Artist = "", Platform = "", Source = "", ThumbUrl = "";
         public bool   Playing;
         public double Position, Duration, LastUpdate;
     }
@@ -20,7 +20,7 @@ public sealed class MediaState
 
     // ─── Mise à jour depuis SMTC ─────────────────────────────────────────────
 
-    public void UpdateFromSmtc(string title, string artist, bool playing,
+    public void UpdateFromSmtc(string title, string artist, string platform, bool playing,
                                 double position, double duration, string thumbUrl)
     {
         lock (_mu)
@@ -45,6 +45,7 @@ public sealed class MediaState
             {
                 Title      = title,
                 Artist     = artist,
+                Platform   = platform,
                 Source     = "smtc",
                 Playing    = playing,
                 Position   = position,

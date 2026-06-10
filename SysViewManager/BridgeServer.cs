@@ -280,6 +280,7 @@ public sealed class BridgeServer
             return Results.Json(new {
                 title       = m.Title,
                 artist      = m.Artist,
+                platform    = m.Platform,
                 source      = m.Source,
                 playing     = m.Playing,
                 position    = pos,

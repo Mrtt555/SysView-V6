@@ -92,9 +92,10 @@ document.addEventListener('alpine:init', function() {
 
       weatherHtml: '<div style="color:rgba(200,170,255,.22);font-size:13px;letter-spacing:2px;">Connexion…</div>',
 
-      mediaTitle:'', mediaArtist:'', mediaPlaying:false,
+      mediaTitle:'', mediaArtist:'', mediaPlatform:'', mediaPlaying:false,
       mediaPos:0,    mediaDur:0,
       _lastTitle:'', _lastThumb:'', _mediaGoneAt:0, _pausedSince:0,
+      _vizBars: null,   _audioSilent: 0,
 
       bridgeOk:    false,
       _worker:     null,
@@ -204,19 +205,28 @@ document.addEventListener('alpine:init', function() {
           if (this._lastTitle !== '') this._clearMedia();
           return;
         }
-        this._mediaGoneAt    = 0;
-        var titleChanged     = d.title !== this._lastTitle;
-        this._lastTitle      = d.title;
+        this._mediaGoneAt = 0;
+        var titleChanged  = d.title !== this._lastTitle;
+        this._lastTitle   = d.title;
         if (titleChanged) this._lastThumb = '';
 
-        this.mediaTitle   = d.title;
-        this.mediaArtist  = fmtArtist(d.artist || '', d.title || '');
-        this.mediaPlaying = !!d.playing;
+        this.mediaTitle    = d.title;
+        this.mediaPlatform = d.platform || '';
+        // Artiste : canal YouTube / artiste Spotify / nom service → fallback plateforme
+        this.mediaArtist   = fmtArtist(d.artist || '', d.title || '') || d.platform || '';
+        this.mediaPlaying  = !!d.playing;
 
         if (d.thumb_url && d.thumb_url !== this._lastThumb) {
+          // Nouvelle miniature valide (déjà filtrée côté C# — jamais un favicon)
           this._lastThumb = d.thumb_url;
           this._setAlbumArt(d.thumb_url);
+        } else if (titleChanged && !d.thumb_url) {
+          // Nouveau titre sans miniature → masquer l'ancienne image
+          var img = document.getElementById('media-art-img');
+          if (img) img.style.opacity = 0;
+          showIdleAnim();
         }
+
         if (d.duration > 0) {
           this.mediaDur = d.duration; this.mediaPos = d.position;
           this._renderProgress(titleChanged);
@@ -261,12 +271,18 @@ document.addEventListener('alpine:init', function() {
         if (!viz) return;
         for (var i = 0; i < 24; i++) {
           var b = document.createElement('div');
-          b.className = 'viz-bar'; viz.appendChild(b);
+          b.className = 'viz-bar';
+          // Délai d'animation idle échelonné (ms) pour un effet de vague
+          b.style.setProperty('--vd', (i * 85) + 'ms');
+          viz.appendChild(b);
         }
+        this._vizBars = viz.querySelectorAll('.viz-bar');
       },
 
       _onAudio(audioArray) {
-        var bars = document.querySelectorAll('#media-viz .viz-bar');
+        var bars = this._vizBars;
+        if (!bars) return;
+        var anySound = false;
         for (var i = 0; i < 24; i++) {
           var s = Math.floor(i * 64 / 24), e = Math.floor((i + 1) * 64 / 24);
           if (e <= s) e = s + 1;
@@ -274,8 +290,21 @@ document.addEventListener('alpine:init', function() {
           for (var j = s; j < e; j++) { if ((audioArray[j] || 0) > peak) peak = audioArray[j]; }
           var a = peak > this._audioEma[i] ? 0.80 : 0.18;
           this._audioEma[i] += a * (peak - this._audioEma[i]);
-          var scale = Math.max(0, Math.min(0.90, this._audioEma[i] * 0.9));
+          if (this._audioEma[i] > 0.008) anySound = true;
+          // Minimum 0.03 → barres toujours légèrement visibles même en silence WE
+          var scale = Math.max(0.03, Math.min(0.90, this._audioEma[i] * 0.9));
           if (bars[i]) bars[i].style.transform = 'scaleY(' + scale.toFixed(3) + ')';
+        }
+        // Silence prolongé → laisser l'animation CSS idle reprendre
+        if (anySound) {
+          this._audioSilent = 0;
+        } else {
+          this._audioSilent++;
+          if (this._audioSilent > 45) {     // ~1.5 s à 30 fps
+            for (var i = 0; i < 24; i++) {
+              if (bars[i]) bars[i].style.transform = '';
+            }
+          }
         }
       },
 

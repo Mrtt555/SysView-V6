@@ -12,8 +12,8 @@
 //     sur la session courante (GetCurrentSession). Si la session liée
 //     passe en pause et qu'une autre session joue, bascule dessus.
 //   ▸ La miniature base64 est ré-encodée UNIQUEMENT si le titre change.
-//   ▸ Priorité : extension Chrome (POST /v1/media, active < 5 s) > SMTC
-//     → si l'extension est active, les updates SMTC sont ignorées.
+//   ▸ Plateforme : détection via SourceAppUserModelId (apps connues + parsing AUMID).
+//   ▸ Miniature : rejet automatique des favicons (< 5 Ko) → fallback TMDB.
 //   ▸ Silencieux si SMTC indisponible.
 //
 // Note VLC : VLC doit avoir "Utiliser les touches multimédia Windows"
@@ -375,17 +375,28 @@ public sealed class SmtcService : IDisposable
                         await ras.AsStreamForRead().CopyToAsync(ms);
                         swThumb.Stop();
 
-                        if (ms.Length > 0)
+                        // Seuil minimal : < 5 Ko = favicon / icône d'app (Brave 32 px ≈ 1-3 Ko).
+                        // Album art / thumbnail vidéo : toujours > 10 Ko en pratique.
+                        const int MinThumbBytes = 5120;
+
+                        if (ms.Length >= MinThumbBytes)
                         {
                             thumbUrl        = $"data:{ct};base64," + Convert.ToBase64String(ms.ToArray());
                             _lastThumbTitle = title;
                             _lastThumbUrl   = thumbUrl;
                             Logger.Debug("SMTC", $"  Miniature encodée : {ct}  {ms.Length / 1024} Ko  {swThumb.ElapsedMilliseconds} ms");
                         }
-                        else
+                        else if (ms.Length == 0)
                         {
                             Logger.Warn("SMTC", $"  Miniature vide (0 octet) — app={s.SourceAppUserModelId}");
-                            // Pas de miniature SMTC → essayer TMDB
+                            thumbUrl = await TryTmdbAsync(title, service);
+                            thumbFromTmdb = !string.IsNullOrEmpty(thumbUrl);
+                            _lastThumbTitle = title;
+                            _lastThumbUrl   = thumbUrl;
+                        }
+                        else
+                        {
+                            Logger.Debug("SMTC", $"  Miniature trop petite ({ms.Length} o < {MinThumbBytes} o) → icône ignorée, tentative TMDB");
                             thumbUrl = await TryTmdbAsync(title, service);
                             thumbFromTmdb = !string.IsNullOrEmpty(thumbUrl);
                             _lastThumbTitle = title;
@@ -439,7 +450,8 @@ public sealed class SmtcService : IDisposable
                     Logger.Debug("SMTC", $"Titre vide — app={s.SourceAppUserModelId}");
             }
 
-            _media.UpdateFromSmtc(title, artist, playing, position, duration, thumbUrl);
+            string platform = DetectPlatform(s.SourceAppUserModelId, service);
+            _media.UpdateFromSmtc(title, artist, platform, playing, position, duration, thumbUrl);
         }
         finally
         {
@@ -452,6 +464,133 @@ public sealed class SmtcService : IDisposable
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Détecte le nom lisible de la plateforme depuis l'AppUserModelId SMTC.
+    /// Priorité : service extrait du titre > app connue > parsing intelligent de l'AUMID.
+    /// </summary>
+    private static string DetectPlatform(string appId, string service)
+    {
+        if (!string.IsNullOrEmpty(service)) return service;
+        var id = appId.ToLowerInvariant();
+
+        // ── Streaming musical ─────────────────────────────────────────────────
+        if (id.Contains("spotify"))                                       return "Spotify";
+        if (id.Contains("tidal"))                                         return "Tidal";
+        if (id.Contains("deezer"))                                        return "Deezer";
+        if (id.Contains("amazon") && id.Contains("music"))               return "Amazon Music";
+        if (id.Contains("amazonmusic"))                                   return "Amazon Music";
+        if (id.Contains("applemusic"))                                    return "Apple Music";
+        if (id.Contains("apple") && id.Contains("music"))                return "Apple Music";
+        if (id.Contains("youtubemusic") || id.Contains("ytmusic"))       return "YouTube Music";
+        if (id.Contains("napster"))                                       return "Napster";
+        if (id.Contains("qobuz"))                                         return "Qobuz";
+        if (id.Contains("pandora"))                                       return "Pandora";
+        if (id.Contains("soundcloud"))                                    return "SoundCloud";
+        if (id.Contains("lastfm"))                                        return "Last.fm";
+        if (id.Contains("bandcamp"))                                      return "Bandcamp";
+        if (id.Contains("iheartradio"))                                   return "iHeartRadio";
+        if (id.Contains("tunein"))                                        return "TuneIn";
+        if (id.Contains("audiomack"))                                     return "Audiomack";
+        if (id.Contains("anghami"))                                       return "Anghami";
+        if (id.Contains("resso"))                                         return "Resso";
+        if (id.Contains("joox"))                                          return "JOOX";
+
+        // ── Lecteurs locaux ───────────────────────────────────────────────────
+        if (id.Contains("vlc"))                                           return "VLC";
+        if (id.Contains("foobar"))                                        return "foobar2000";
+        if (id.Contains("aimp"))                                          return "AIMP";
+        if (id.Contains("musicbee"))                                      return "MusicBee";
+        if (id.Contains("winamp"))                                        return "Winamp";
+        if (id.Contains("mediamonkey"))                                   return "MediaMonkey";
+        if (id.Contains("clementine"))                                    return "Clementine";
+        if (id.Contains("strawberry"))                                    return "Strawberry";
+        if (id.Contains("lollypop"))                                      return "Lollypop";
+        if (id.Contains("dopamine"))                                      return "Dopamine";
+        if (id.Contains("plexamp"))                                       return "Plexamp";
+        if (id.Contains("itunes"))                                        return "iTunes";
+        if (id.Contains("wmplayer"))                                      return "Windows Media Player";
+        if (id.Contains("groove") || id.Contains("zune"))                return "Groove Music";
+        if (id.Contains("movies") && id.Contains("tv"))                  return "Films & TV";
+
+        // ── Navigateurs ───────────────────────────────────────────────────────
+        if (id.Contains("brave"))                                         return "Brave";
+        if (id.Contains("msedge") || id.Contains("edge"))                return "Edge";
+        if (id.Contains("chrome"))                                        return "Chrome";
+        if (id.Contains("firefox"))                                       return "Firefox";
+        if (id.Contains("opera"))                                         return "Opera";
+        if (id.Contains("vivaldi"))                                       return "Vivaldi";
+        if (id.Contains("thorium"))                                       return "Thorium";
+        if (id.Contains("chromium"))                                      return "Chromium";
+        if (id.Contains("waterfox"))                                      return "Waterfox";
+        if (id.Contains("librewolf"))                                     return "LibreWolf";
+
+        // ── Fallback : extraire un nom lisible depuis l'AUMID ─────────────────
+        return ExtractAppName(appId);
+    }
+
+    /// <summary>
+    /// Extrait un nom lisible depuis un AppUserModelId inconnu.
+    /// Gère les formats : GUID, Win32 .exe, MS Store AUMID, reverse-domain.
+    /// </summary>
+    private static string ExtractAppName(string appId)
+    {
+        if (string.IsNullOrEmpty(appId)) return "";
+
+        // GUID ou hash hex aléatoire → inutilisable
+        if (appId.StartsWith("{")) return "";
+        if (appId.Length >= 20 && appId.All(c => "0123456789abcdefABCDEF".Contains(c)))
+            return "";
+
+        // MS Store AUMID : "Publisher.AppName_hash!AppId"
+        int bang = appId.IndexOf('!');
+        if (bang > 0)
+        {
+            var afterBang = appId[(bang + 1)..].Trim();
+            // Garder si c'est un vrai nom (pas "App" générique, pas hash tout-majuscule)
+            if (!string.IsNullOrEmpty(afterBang) && afterBang != "App"
+                && afterBang.Length < 30
+                && !afterBang.All(c => char.IsUpper(c) || char.IsDigit(c)))
+                return NiceName(afterBang);
+
+            // Prendre le nom de l'app avant le hash (Publisher.AppName_hash)
+            var beforeBang = appId[..bang];
+            int underscore = beforeBang.LastIndexOf('_');
+            var candidate  = underscore > 0 ? beforeBang[..underscore] : beforeBang;
+            int dot        = candidate.LastIndexOf('.');
+            candidate      = dot >= 0 ? candidate[(dot + 1)..] : candidate;
+            if (candidate.Length > 2) return NiceName(candidate);
+        }
+
+        // Win32 .exe avec chemin ou non : "C:\...\AIMP.exe" ou "AIMP.exe"
+        if (appId.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            return NiceName(System.IO.Path.GetFileNameWithoutExtension(appId));
+
+        // Reverse-domain "com.company.appname" → dernier segment
+        if (appId.Contains('.'))
+        {
+            var parts = appId.Split('.');
+            var last  = parts[^1];
+            if (last.Length > 2) return NiceName(last);
+        }
+
+        return appId.Length <= 30 ? NiceName(appId) : "";
+    }
+
+    /// <summary>
+    /// Met la première lettre en majuscule si le nom est tout en minuscules.
+    /// Laisse intact les noms déjà en PascalCase ou UPPERCASE (acronymes).
+    /// </summary>
+    private static string NiceName(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return s;
+        bool hasUpper = s.Any(char.IsUpper);
+        bool hasLower = s.Any(char.IsLower);
+        // PascalCase ou ACRONYME → garder tel quel
+        if (hasUpper) return s;
+        // tout minuscule → capitaliser la première lettre
+        return char.ToUpperInvariant(s[0]) + s[1..];
+    }
 
     /// <summary>
     /// Tente de récupérer un poster TMDB pour le titre donné.
