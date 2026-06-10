@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "SysView Media Bridge",
+  "version": "1.0.0",
+  "description": "Transmet les métadonnées médias à SysView V6 (titre, artiste, durée, pochette).",
+
+  "permissions": ["tabs"],
+  "host_permissions": ["http://127.0.0.1:5001/*"],
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    }
+  ]
+}

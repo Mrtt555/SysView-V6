@@ -363,6 +363,14 @@ public sealed class SmtcService : IDisposable
 
             bool fromBrowser = IsFromBrowser(s.SourceAppUserModelId);
 
+            // Si l'extension navigateur est active, elle est plus précise que SMTC
+            // pour tout contenu provenant d'un navigateur → ignorer cette session.
+            if (fromBrowser && _media.IsExtActive())
+            {
+                Logger.Debug("SMTC", $"Extension active → SMTC navigateur ignoré ({s.SourceAppUserModelId})");
+                return;
+            }
+
             // Apps vidéo natives (Jellyfin, Plex, Emby…) : si le titre ne contient pas
             // le suffixe service, on l'infère depuis l'AUMID pour activer le mode vidéo.
             if (string.IsNullOrEmpty(service) && !fromBrowser)

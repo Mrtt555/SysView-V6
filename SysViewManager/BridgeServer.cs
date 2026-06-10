@@ -83,6 +83,11 @@ public sealed class BridgeServer
                 o.Window      = TimeSpan.FromMinutes(1);
                 o.QueueLimit  = 0;
             });
+            opt.AddFixedWindowLimiter("ext", o => {
+                o.PermitLimit = 600;  // ~10 req/s — extension envoie 1/s par onglet
+                o.Window      = TimeSpan.FromMinutes(1);
+                o.QueueLimit  = 0;
+            });
             opt.OnRejected = async (ctx, _) => {
                 System.Threading.Interlocked.Increment(ref _rateLimitHits);
                 var ip = ctx.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "?";
@@ -290,6 +295,45 @@ public sealed class BridgeServer
                 last_update = m.LastUpdate,
             });
         }).RequireRateLimiting("api");
+
+        // ─────────────────────────────────────────────────────────────────────
+        // POST /v1/media/ext  (extension navigateur Chrome/Brave/Edge)
+        // Corps JSON : { type, title, artist, artwork, service, host,
+        //               position, duration, playing }
+        // ─────────────────────────────────────────────────────────────────────
+        app.MapPost("/v1/media/ext", async (HttpContext ctx) =>
+        {
+            try
+            {
+                var json = await JsonNode.ParseAsync(ctx.Request.Body);
+                if (json == null) return Results.BadRequest(new { error = "Corps JSON manquant" });
+
+                string type = json["type"]?.GetValue<string>() ?? "";
+
+                if (type == "no_media")
+                {
+                    _media.ClearExt();
+                    return Results.Ok(new { ok = true });
+                }
+
+                string title    = json["title"]?.GetValue<string>()    ?? "";
+                string artist   = json["artist"]?.GetValue<string>()   ?? "";
+                string service  = json["service"]?.GetValue<string>()  ?? "";
+                string host     = json["host"]?.GetValue<string>()     ?? "";
+                bool   playing  = json["playing"]?.GetValue<bool>()    ?? false;
+                int    position = json["position"]?.GetValue<int>()    ?? 0;
+                int    duration = json["duration"]?.GetValue<int>()    ?? 0;
+                string artwork  = json["artwork"]?.GetValue<string>()  ?? "";
+
+                _media.UpdateFromExt(title, artist, service, host, playing, position, duration, artwork);
+                return Results.Ok(new { ok = true });
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Bridge", $"POST /v1/media/ext erreur : {ex.Message}");
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        }).RequireRateLimiting("ext");
 
         // ─────────────────────────────────────────────────────────────────────
         // GET /v1/status

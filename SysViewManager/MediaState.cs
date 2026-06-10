@@ -1,5 +1,7 @@
 // =============================================================
-// MediaState — état média partagé (source unique : SMTC)
+// MediaState — état média partagé
+// Sources : SMTC (apps natives) · Extension navigateur (Netflix…)
+// L'extension a la priorité sur SMTC pour le contenu navigateur.
 // =============================================================
 
 namespace SysViewManager;
@@ -15,6 +17,9 @@ public sealed class MediaState
 
     private Snapshot     _snap = new();
     private readonly object _mu = new();
+
+    // Timestamp de la dernière donnée extension (ms → s)
+    private double _extLastSeen = 0;
 
     public Snapshot Get() { lock (_mu) return _snap; }
 
@@ -82,6 +87,96 @@ public sealed class MediaState
                 Logger.Info("Media", $"SMTC : session terminée — état réinitialisé (était : \"{_snap.Title}\")");
                 _snap = new Snapshot();
             }
+        }
+    }
+
+    // ─── Source : Extension navigateur ──────────────────────────────────────
+
+    /// <summary>
+    /// Mise à jour depuis l'extension navigateur (priorité sur SMTC pour les onglets actifs).
+    /// Fournit la vraie durée, position et les métadonnées Media Session directement depuis la page.
+    /// </summary>
+    public void UpdateFromExt(string title, string artist, string service, string host,
+                               bool playing, int position, int duration, string artworkUrl)
+    {
+        lock (_mu)
+        {
+            double now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
+            _extLastSeen = now;
+
+            if (string.IsNullOrEmpty(title))
+            {
+                if (_snap.Source == "ext")
+                {
+                    _snap = new Snapshot();
+                    Logger.Info("Media", "Extension : aucun média actif — état réinitialisé");
+                }
+                return;
+            }
+
+            bool sourceChanged  = _snap.Source  != "ext";
+            bool titleChanged   = _snap.Title   != title;
+            bool playingChanged = _snap.Playing  != playing;
+            bool positionJumped = titleChanged || Math.Abs(_snap.Position - position) > 1.5;
+
+            string platform  = !string.IsNullOrEmpty(service) ? service : host;
+            string mediaType = service is "YouTube" ? "youtube"
+                             : service is "YouTube Music" or "Spotify" or "Deezer"
+                                       or "Tidal" or "SoundCloud" or "Apple Music" ? "music"
+                             : !string.IsNullOrEmpty(service) ? "video"
+                             : "video";
+
+            _snap = new Snapshot
+            {
+                Title      = title,
+                Artist     = artist,
+                Platform   = platform,
+                MediaType  = mediaType,
+                Source     = "ext",
+                Playing    = playing,
+                Position   = position,
+                Duration   = duration,
+                ThumbUrl   = artworkUrl,
+                LastUpdate = positionJumped ? now : _snap.LastUpdate,
+            };
+
+            if (sourceChanged)
+                Logger.Info("Media", $"Source → Extension | {(playing ? "▶" : "⏸")} \"{title}\" [{platform}]");
+            else if (titleChanged)
+                Logger.Info("Media", $"Extension : nouveau titre — {(playing ? "▶" : "⏸")} \"{title}\" [{platform}]");
+            else if (playingChanged)
+                Logger.Info("Media", $"Extension : {(playing ? "▶ lecture" : "⏸ pause")} — \"{title}\"");
+            else
+                Logger.Debug("Media", $"Extension : position — {position}s / {duration}s  [{platform}]");
+        }
+    }
+
+    /// <summary>
+    /// Efface l'état extension (plus aucun onglet avec média actif).
+    /// </summary>
+    public void ClearExt()
+    {
+        lock (_mu)
+        {
+            _extLastSeen = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
+            if (_snap.Source == "ext")
+            {
+                _snap = new Snapshot();
+                Logger.Info("Media", "Extension : aucun onglet actif — état réinitialisé");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Vrai si l'extension a envoyé des données dans les 5 dernières secondes.
+    /// Utilisé par SmtcService pour ignorer les sessions navigateur (moins précises).
+    /// </summary>
+    public bool IsExtActive()
+    {
+        lock (_mu)
+        {
+            double now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
+            return _extLastSeen > 0 && (now - _extLastSeen) < 5.0;
         }
     }
 }
