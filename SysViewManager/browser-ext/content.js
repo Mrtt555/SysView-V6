@@ -85,7 +85,8 @@
     return src;
   }
 
-  var _lastKey = '';
+  var _lastKey  = '';
+  var _lastSent = 0;
 
   function poll() {
     var host    = window.location.hostname;
@@ -97,7 +98,8 @@
     // Aucun média sur cette page
     if (!video && !meta) {
       if (_lastKey !== 'empty') {
-        _lastKey = 'empty';
+        _lastKey  = 'empty';
+        _lastSent = 0;
         try { chrome.runtime.sendMessage({ type: 'no_media' }); } catch (e) {}
       }
       return;
@@ -130,10 +132,12 @@
       playing:  playing,
     };
 
-    // N'envoyer que si quelque chose a changé (évite le spam inutile)
     var key = msg.title + '|' + msg.playing + '|' + msg.position;
-    if (key === _lastKey) return;
-    _lastKey = key;
+    var now = Date.now();
+    // Envoyer si : données changées OU heartbeat 2s (maintient le tab frais en pause)
+    if (key === _lastKey && (now - _lastSent) < 2000) return;
+    _lastKey  = key;
+    _lastSent = now;
 
     try { chrome.runtime.sendMessage(msg); } catch (e) {}
   }
