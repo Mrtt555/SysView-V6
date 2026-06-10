@@ -186,13 +186,29 @@
 				"type" : "combo",
 				"value" : "inter"
 			},
-			"bar_color" :
+			"bar_color_1" :
 			{
 				"index" : 48,
 				"order" : 1026,
-				"text" : "Progress bar color",
+				"text" : "Bar color — CPU + GPU",
 				"type" : "color",
 				"value" : "0.784 0.549 1"
+			},
+			"bar_color_2" :
+			{
+				"index" : 49,
+				"order" : 1027,
+				"text" : "Bar color — RAM + VRAM",
+				"type" : "color",
+				"value" : "1 0.549 0.235"
+			},
+			"bar_color_3" :
+			{
+				"index" : 50,
+				"order" : 1028,
+				"text" : "Bar color — Network + Storage",
+				"type" : "color",
+				"value" : "0.353 0.667 1"
 			},
 			"sep2" : 
 			{

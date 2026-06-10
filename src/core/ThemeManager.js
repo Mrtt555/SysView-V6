@@ -51,7 +51,9 @@ export class ThemeManager {
     if (p.accent2_color   !== undefined) r.style.setProperty('--s',  rgb(p.accent2_color));
     if (p.bg_color        !== undefined) r.style.setProperty('--bg', rgb(p.bg_color));
     if (p.text_color      !== undefined) r.style.setProperty('--tx', rgb(p.text_color));
-    if (p.bar_color       !== undefined) r.style.setProperty('--bar', rgb(p.bar_color));
+    if (p.bar_color_1 !== undefined) r.style.setProperty('--bar1', rgb(p.bar_color_1));
+    if (p.bar_color_2 !== undefined) r.style.setProperty('--bar2', rgb(p.bar_color_2));
+    if (p.bar_color_3 !== undefined) r.style.setProperty('--bar3', rgb(p.bar_color_3));
 
     if (p.font_family !== undefined) {
       var fontMap = {

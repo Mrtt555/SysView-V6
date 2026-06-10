@@ -6,13 +6,15 @@
 
 /* ─── CSS VARIABLES (configurables via Wallpaper Engine) ─── */
 :root {
-  --p:   160,100,255;  /* Primary   — bordures, cadres    */
-  --s:   200,140,255;  /* Secondary — barres, actif       */
-  --bar: 200,140,255;  /* Bar fill  — barres de progression */
-  --bg:  8,6,18;       /* Fond très sombre                */
-  --tx:  210,200,230;  /* Texte                           */
-  --op:  0.55;         /* Opacité globale                 */
-  --sz:  1;            /* Échelle UI  (100% = 1)          */
+  --p:    160,100,255; /* Primary   — bordures, cadres        */
+  --s:    200,140,255; /* Secondary — actif, labels           */
+  --bar1: 200,140,255; /* Compute   — CPU + GPU               */
+  --bar2: 255,140,60;  /* Memory    — RAM + VRAM              */
+  --bar3: 90,170,255;  /* I/O       — Réseau + Stockage       */
+  --bg:   8,6,18;      /* Fond très sombre                    */
+  --tx:   210,200,230; /* Texte                               */
+  --op:   0.55;        /* Opacité globale                     */
+  --sz:   1;           /* Échelle UI  (100% = 1)              */
 
   /* Dérivées — recalculées par JS à chaque changement d'opacité */
   --op-hi:     0.220;  /* gradient panel haut  (op×0.40)  */
@@ -195,9 +197,9 @@ html, body {
 }
 .no-api .bfill { transition: none !important; }
 .no-api .stat-temp, .no-api .stat-pct { transition: none !important; }
-.bf-p { background: linear-gradient(90deg, rgba(var(--bar),.35), rgba(var(--bar),1)); }
-.bf-b { background: linear-gradient(90deg, rgba(60,120,220,.45), rgba(90,180,255,1)); }
-.bf-o { background: linear-gradient(90deg, rgba(200,80,20,.45), rgba(255,155,50,1)); }
+.bf-1 { background: linear-gradient(90deg, rgba(var(--bar1),.30), rgba(var(--bar1),1)); } /* CPU + GPU  */
+.bf-2 { background: linear-gradient(90deg, rgba(var(--bar2),.30), rgba(var(--bar2),1)); } /* RAM + VRAM */
+.bf-3 { background: linear-gradient(90deg, rgba(var(--bar3),.30), rgba(var(--bar3),1)); } /* Net + I/O  */
 
 /* ─── MÉMOIRE (RAM / VRAM / Disques) ────────────────────── */
 .memrow {

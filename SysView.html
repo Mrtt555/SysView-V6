@@ -63,7 +63,7 @@ tailwind.config = {
         </div>
         <div class="hw-device" id="cpu-name" x-text="hw.cpuName"></div>
         <div class="flex items-center gap-2 mt-2">
-          <div class="btrack flex-1"><div class="bfill bf-p" id="cpu-bar" style="width:0%"></div></div>
+          <div class="btrack flex-1"><div class="bfill bf-1" id="cpu-bar" style="width:0%"></div></div>
           <span class="stat-pct" id="cpu-pct">0%</span>
         </div>
       </div>
@@ -77,7 +77,7 @@ tailwind.config = {
         </div>
         <div class="hw-device" id="gpu-name" x-text="hw.gpuName"></div>
         <div class="flex items-center gap-2 mt-2">
-          <div class="btrack flex-1"><div class="bfill bf-b" id="gpu-bar" style="width:0%"></div></div>
+          <div class="btrack flex-1"><div class="bfill bf-1" id="gpu-bar" style="width:0%"></div></div>
           <span class="stat-pct" id="gpu-pct">0%</span>
         </div>
       </div>
@@ -90,7 +90,7 @@ tailwind.config = {
         <span class="hw-label" x-text="T('ram')">RAM</span>
         <span class="stat-pct" id="ram-pct">0%</span>
       </div>
-      <div class="btrack"><div class="bfill bf-o" id="ram-bar" style="width:0%"></div></div>
+      <div class="btrack"><div class="bfill bf-2" id="ram-bar" style="width:0%"></div></div>
       <div class="memrow">
         <div><span class="memval" id="ram-used">0</span><span class="memunit"> Go</span></div>
         <div class="memtot" id="ram-total">/ — Go</div>
@@ -103,7 +103,7 @@ tailwind.config = {
         <span class="hw-label" x-text="T('vram')">VRAM</span>
         <span class="stat-pct" id="vram-pct">0%</span>
       </div>
-      <div class="btrack"><div class="bfill bf-p" id="vram-bar" style="width:0%"></div></div>
+      <div class="btrack"><div class="bfill bf-2" id="vram-bar" style="width:0%"></div></div>
       <div class="memrow">
         <div><span class="memval" id="vram-used">0</span><span class="memunit"> Go</span></div>
         <div class="memtot" id="vram-total">/ — Go</div>
@@ -115,10 +115,10 @@ tailwind.config = {
       <div class="hw-label mb-1" x-text="T('network')">Réseau</div>
       <div class="netrows">
         <div class="netlabel" x-text="T('download')">▼ DL</div>
-        <div class="btrack"><div class="bfill bf-b" id="net-dl-bar" style="width:0%"></div></div>
+        <div class="btrack"><div class="bfill bf-3" id="net-dl-bar" style="width:0%"></div></div>
         <div class="netval" id="net-dl">0 <span class="netunit">ko/s</span></div>
         <div class="netlabel" x-text="T('upload')">▲ UL</div>
-        <div class="btrack"><div class="bfill bf-p" id="net-ul-bar" style="width:0%"></div></div>
+        <div class="btrack"><div class="bfill bf-3" id="net-ul-bar" style="width:0%"></div></div>
         <div class="netval" id="net-ul">0 <span class="netunit">ko/s</span></div>
       </div>
     </div>
@@ -132,42 +132,42 @@ tailwind.config = {
     <div class="mblk" id="disk-c-blk" x-show="show.diskC">
       <div class="flex items-center gap-2 mb-1">
         <span class="hw-label">C:</span>
-        <div class="btrack flex-1"><div class="bfill bf-p" id="disk-c-bar" style="width:0%"></div></div>
+        <div class="btrack flex-1"><div class="bfill bf-3" id="disk-c-bar" style="width:0%"></div></div>
       </div>
       <div class="memrow"><div><span class="memval dval" id="disk-c-used">0</span><span class="memunit"> Go</span></div><div class="memtot" id="disk-c-total">/ — Go</div></div>
     </div>
     <div class="mblk" id="disk-d-blk" x-show="show.diskD">
       <div class="flex items-center gap-2 mb-1">
         <span class="hw-label">D:</span>
-        <div class="btrack flex-1"><div class="bfill bf-b" id="disk-d-bar" style="width:0%"></div></div>
+        <div class="btrack flex-1"><div class="bfill bf-3" id="disk-d-bar" style="width:0%"></div></div>
       </div>
       <div class="memrow"><div><span class="memval dval" id="disk-d-used">0</span><span class="memunit"> Go</span></div><div class="memtot" id="disk-d-total">/ — Go</div></div>
     </div>
     <div class="mblk" id="disk-e-blk" x-show="show.diskE">
       <div class="flex items-center gap-2 mb-1">
         <span class="hw-label">E:</span>
-        <div class="btrack flex-1"><div class="bfill bf-o" id="disk-e-bar" style="width:0%"></div></div>
+        <div class="btrack flex-1"><div class="bfill bf-3" id="disk-e-bar" style="width:0%"></div></div>
       </div>
       <div class="memrow"><div><span class="memval dval" id="disk-e-used">0</span><span class="memunit"> Go</span></div><div class="memtot" id="disk-e-total">/ — Go</div></div>
     </div>
     <div class="mblk" id="disk-f-blk" x-show="show.diskF">
       <div class="flex items-center gap-2 mb-1">
         <span class="hw-label">F:</span>
-        <div class="btrack flex-1"><div class="bfill bf-p" id="disk-f-bar" style="width:0%"></div></div>
+        <div class="btrack flex-1"><div class="bfill bf-3" id="disk-f-bar" style="width:0%"></div></div>
       </div>
       <div class="memrow"><div><span class="memval dval" id="disk-f-used">0</span><span class="memunit"> Go</span></div><div class="memtot" id="disk-f-total">/ — Go</div></div>
     </div>
     <div class="mblk" id="disk-g-blk" x-show="show.diskG">
       <div class="flex items-center gap-2 mb-1">
         <span class="hw-label">G:</span>
-        <div class="btrack flex-1"><div class="bfill bf-b" id="disk-g-bar" style="width:0%"></div></div>
+        <div class="btrack flex-1"><div class="bfill bf-3" id="disk-g-bar" style="width:0%"></div></div>
       </div>
       <div class="memrow"><div><span class="memval dval" id="disk-g-used">0</span><span class="memunit"> Go</span></div><div class="memtot" id="disk-g-total">/ — Go</div></div>
     </div>
     <div class="mblk" id="disk-h-blk" x-show="show.diskH">
       <div class="flex items-center gap-2 mb-1">
         <span class="hw-label">H:</span>
-        <div class="btrack flex-1"><div class="bfill bf-o" id="disk-h-bar" style="width:0%"></div></div>
+        <div class="btrack flex-1"><div class="bfill bf-3" id="disk-h-bar" style="width:0%"></div></div>
       </div>
       <div class="memrow"><div><span class="memval dval" id="disk-h-used">0</span><span class="memunit"> Go</span></div><div class="memtot" id="disk-h-total">/ — Go</div></div>
     </div>
