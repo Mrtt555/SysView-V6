@@ -439,8 +439,11 @@ public sealed class SmtcService : IDisposable
                     Logger.Debug("SMTC", $"Titre vide — app={s.SourceAppUserModelId}");
             }
 
-            string platform = DetectPlatform(s.SourceAppUserModelId, service);
-            _media.UpdateFromSmtc(title, artist, platform, playing, position, duration, thumbUrl);
+            string platform  = DetectPlatform(s.SourceAppUserModelId, service);
+            // "video" si un service de streaming a été détecté dans le titre du navigateur,
+            // "music" pour tout le reste (Spotify, lecteurs locaux, apps inconnues).
+            string mediaType = !string.IsNullOrEmpty(service) ? "video" : "music";
+            _media.UpdateFromSmtc(title, artist, platform, mediaType, playing, position, duration, thumbUrl);
         }
         finally
         {

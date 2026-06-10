@@ -316,11 +316,15 @@ html, body {
   flex: 1; min-height: 0; overflow: hidden;
 }
 .mart {
-  width: calc(192px * var(--sz)); height: calc(108px * var(--sz));
+  width: calc(108px * var(--sz)); height: calc(108px * var(--sz));
+  max-width: calc(108px * var(--sz));
   border: 1px solid rgba(var(--p), .14); border-radius: calc(8px * var(--sz));
   background: rgba(var(--p), .04); flex-shrink: 0;
   overflow: hidden; position: relative;
   display: flex; align-items: center; justify-content: center;
+}
+.mart.mart--video {
+  max-width: calc(72px * var(--sz));
 }
 #media-art-img {
   position: absolute; inset: 0; width: 100%; height: 100%;

@@ -281,6 +281,7 @@ public sealed class BridgeServer
                 title       = m.Title,
                 artist      = m.Artist,
                 platform    = m.Platform,
+                media_type  = m.MediaType,
                 source      = m.Source,
                 playing     = m.Playing,
                 position    = pos,

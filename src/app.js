@@ -92,7 +92,7 @@ document.addEventListener('alpine:init', function() {
 
       weatherHtml: '<div style="color:rgba(200,170,255,.22);font-size:13px;letter-spacing:2px;">Connexion…</div>',
 
-      mediaTitle:'', mediaArtist:'', mediaPlatform:'', mediaPlaying:false,
+      mediaTitle:'', mediaArtist:'', mediaPlatform:'', mediaType:'', mediaPlaying:false,
       mediaPos:0,    mediaDur:0,
       _lastTitle:'', _lastThumb:'', _mediaGoneAt:0, _pausedSince:0,
       _vizBars: null,   _audioSilent: 0,
@@ -212,8 +212,12 @@ document.addEventListener('alpine:init', function() {
 
         this.mediaTitle    = d.title;
         this.mediaPlatform = d.platform || '';
+        this.mediaType     = d.media_type || '';
         // Artiste : canal YouTube / artiste Spotify / nom service → fallback plateforme
         this.mediaArtist   = fmtArtist(d.artist || '', d.title || '') || d.platform || '';
+        // Ratio du cadre : carré pour musique, portrait 2:3 pour streaming vidéo
+        var mart = document.querySelector('.mart');
+        if (mart) mart.classList.toggle('mart--video', this.mediaType === 'video');
         this.mediaPlaying  = !!d.playing;
 
         if (d.thumb_url && d.thumb_url !== this._lastThumb) {
@@ -251,8 +255,10 @@ document.addEventListener('alpine:init', function() {
       _clearMedia() {
         this._lastTitle = ''; this._lastThumb = '';
         this._pausedSince = 0; this._mediaGoneAt = 0;
-        this.mediaTitle = ''; this.mediaArtist = '';
+        this.mediaTitle = ''; this.mediaArtist = ''; this.mediaType = '';
         this.mediaPlaying = false; this.mediaDur = 0; this.mediaPos = 0;
+        var mart = document.querySelector('.mart');
+        if (mart) mart.classList.remove('mart--video');
         var img = document.getElementById('media-art-img');
         if (img) img.style.opacity = 0;
         showIdleAnim();
