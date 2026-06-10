@@ -17,10 +17,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$proj    = "$PSScriptRoot\SysViewManager\SysViewManager.csproj"
-$outDir  = "$PSScriptRoot\SysViewManager\bin\Release\net8.0-windows10.0.17763.0\win-x64\publish"
+$root    = "$PSScriptRoot\.."
+$proj    = "$root\SysViewManager\SysViewManager.csproj"
+$outDir  = "$root\SysViewManager\bin\Release\net8.0-windows10.0.17763.0\win-x64\publish"
 $exe     = "$outDir\SysViewManager.exe"
-$certDir = "$PSScriptRoot\certs"
+$certDir = "$root\certs"
 $cerFile = "$certDir\Astralcodes.cer"
 
 Write-Host ""

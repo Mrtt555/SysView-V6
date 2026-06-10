@@ -1,0 +1,10 @@
+{
+  "name": "SysView V6",
+  "short_name": "SysView",
+  "display": "fullscreen",
+  "background_color": "#08060a",
+  "theme_color": "#a064ff",
+  "icons": [
+    { "src": "src/assets/icons/favicon.svg", "type": "image/svg+xml", "sizes": "any" }
+  ]
+}

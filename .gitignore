@@ -21,6 +21,5 @@ certs/*.p12
 *.pid
 *.tmp
 
-publish.ps1
-publish.bat
-install-cert.ps1
+# Claude Code internal
+.claude/

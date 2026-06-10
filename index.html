@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920">
+<title>SysView V6</title>
+<link rel="icon"       href="src/assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="manifest"   href="manifest.json">
+<link rel="stylesheet" href="src/style.css">
+
+<!-- Queue WE : synchrone, capture les propriétés avant le module ES -->
+<script>
+window._wePropsQueue = [];
+window.wallpaperPropertyListener = {
+  applyUserProperties: function(p) { window._wePropsQueue.push(p); }
+};
+</script>
+
+<!-- Tailwind CSS v3 CDN (config miroir de src/tailwind.config.js) -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  corePlugins: { preflight: false },
+  theme: { extend: { colors: {
+    primary:   'rgb(var(--p)  / <alpha-value>)',
+    secondary: 'rgb(var(--s)  / <alpha-value>)',
+    surface:   'rgb(var(--bg) / <alpha-value>)',
+    ink:       'rgb(var(--tx) / <alpha-value>)',
+  }}}
+};
+</script>
+
+<!-- app.js ES module AVANT Alpine (enregistre Alpine.data via alpine:init) -->
+<script type="module" src="src/app.js"></script>
+
+<!-- Alpine.js v3 defer — s'initialise après DOM + app.js -->
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+<style>[x-cloak]{display:none!important;}</style>
+</head>
+
+<body x-data="sysview()" x-cloak>
+
+<!-- Fond & scanline -->
+<div id="bg-image"></div>
+<div id="scanline"></div>
+
+<!-- ════════════════════════════════════════════════════════════
+     COLONNE GAUCHE : Monitoring + Stockage
+     ════════════════════════════════════════════════════════════ -->
+<div class="left-col">
+
+  <!-- Panneau Monitoring -->
+  <div class="panel" id="blk-monitoring" x-show="show.monitoring">
+    <div class="ptitle" x-text="'◈ ' + T('monitoring')"></div>
+
+    <div class="cpu-gpu-grid">
+
+      <div id="blk-cpu" x-show="show.cpu">
+        <div class="flex justify-between items-baseline">
+          <span class="hw-label" x-text="T('cpu')">CPU</span>
+          <span class="stat-temp" id="cpu-temp">—°C</span>
+        </div>
+        <div class="hw-device" id="cpu-name" x-text="hw.cpuName"></div>
+        <div class="flex items-center gap-2 mt-2">
+          <div class="btrack flex-1"><div class="bfill bf-p" id="cpu-bar" style="width:0%"></div></div>
+          <span class="stat-pct" id="cpu-pct">0%</span>
+        </div>
+      </div>
+
+      <div class="hw-sep"></div>
+
+      <div id="blk-gpu" x-show="show.gpu">
+        <div class="flex justify-between items-baseline">
+          <span class="hw-label" x-text="T('gpu')">GPU</span>
+          <span class="stat-temp" id="gpu-temp">—°C</span>
+        </div>
+        <div class="hw-device" id="gpu-name" x-text="hw.gpuName"></div>
+        <div class="flex items-center gap-2 mt-2">
+          <div class="btrack flex-1"><div class="bfill bf-b" id="gpu-bar" style="width:0%"></div></div>
+          <span class="stat-pct" id="gpu-pct">0%</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RAM -->
+    <div class="mblk" id="blk-ram" x-show="show.ram">
+      <div class="flex justify-between items-baseline mb-1">
+        <span class="hw-label" x-text="T('ram')">RAM</span>
+        <span class="stat-pct" id="ram-pct">0%</span>
+      </div>
+      <div class="btrack"><div class="bfill bf-o" id="ram-bar" style="width:0%"></div></div>
+      <div class="memrow">
+        <div><span class="memval" id="ram-used">0</span><span class="memunit"> Go</span></div>
+        <div class="memtot" id="ram-total">/ — Go</div>
+      </div>
+    </div>
+
+    <!-- VRAM -->
+    <div class="mblk" id="blk-vram" x-show="show.vram">
+      <div class="flex justify-between items-baseline mb-1">
+        <span class="hw-label" x-text="T('vram')">VRAM</span>
+        <span class="stat-pct" id="vram-pct">0%</span>
+      </div>
+      <div class="btrack"><div class="bfill bf-p" id="vram-bar" style="width:0%"></div></div>
+      <div class="memrow">
+        <div><span class="memval" id="vram-used">0</span><span class="memunit"> Go</span></div>
+        <div class="memtot" id="vram-total">/ — Go</div>
+      </div>
+    </div>
+
+    <!-- Réseau -->
+    <div class="mblk" id="blk-net" x-show="show.net">
+      <div class="hw-label mb-1" x-text="T('network')">Réseau</div>
+      <div class="netrow">
+        <div class="netlabel" x-text="T('download')">▼ DL</div>
+        <div class="btrack"><div class="bfill bf-b" id="net-dl-bar" style="width:0%"></div></div>
+        <div class="netval" id="net-dl">0 <span class="netunit">ko/s</span></div>
+      </div>
+      <div class="netrow">
+        <div class="netlabel" x-text="T('upload')">▲ UL</div>
+        <div class="btrack"><div class="bfill bf-p" id="net-ul-bar" style="width:0%"></div></div>
+        <div class="netval" id="net-ul">0 <span class="netunit">ko/s</span></div>
+      </div>
+    </div>
+
+  </div><!-- /blk-monitoring -->
+
+  <!-- Panneau Stockage -->
+  <div class="panel" id="blk-disks" x-show="show.disks">
+    <div class="ptitle" x-text="'◈ ' + T('storage')"></div>
+
+    <div class="mblk" id="disk-c-blk" x-show="show.diskC">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="hw-label">C:</span>
+        <div class="btrack flex-1"><div class="bfill bf-p" id="disk-c-bar" style="width:0%"></div></div>
+      </div>
+      <div class="memrow"><div><span class="memval dval" id="disk-c-used">0</span><span class="memunit"> Go</span></div><div class="memtot" id="disk-c-total">/ — Go</div></div>
+    </div>
+    <div class="mblk" id="disk-d-blk" x-show="show.diskD">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="hw-label">D:</span>
+        <div class="btrack flex-1"><div class="bfill bf-b" id="disk-d-bar" style="width:0%"></div></div>
+      </div>
+      <div class="memrow"><div><span class="memval dval" id="disk-d-used">0</span><span class="memunit"> Go</span></div><div class="memtot" id="disk-d-total">/ — Go</div></div>
+    </div>
+    <div class="mblk" id="disk-e-blk" x-show="show.diskE">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="hw-label">E:</span>
+        <div class="btrack flex-1"><div class="bfill bf-o" id="disk-e-bar" style="width:0%"></div></div>
+      </div>
+      <div class="memrow"><div><span class="memval dval" id="disk-e-used">0</span><span class="memunit"> Go</span></div><div class="memtot" id="disk-e-total">/ — Go</div></div>
+    </div>
+    <div class="mblk" id="disk-f-blk" x-show="show.diskF">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="hw-label">F:</span>
+        <div class="btrack flex-1"><div class="bfill bf-p" id="disk-f-bar" style="width:0%"></div></div>
+      </div>
+      <div class="memrow"><div><span class="memval dval" id="disk-f-used">0</span><span class="memunit"> Go</span></div><div class="memtot" id="disk-f-total">/ — Go</div></div>
+    </div>
+    <div class="mblk" id="disk-g-blk" x-show="show.diskG">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="hw-label">G:</span>
+        <div class="btrack flex-1"><div class="bfill bf-b" id="disk-g-bar" style="width:0%"></div></div>
+      </div>
+      <div class="memrow"><div><span class="memval dval" id="disk-g-used">0</span><span class="memunit"> Go</span></div><div class="memtot" id="disk-g-total">/ — Go</div></div>
+    </div>
+    <div class="mblk" id="disk-h-blk" x-show="show.diskH">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="hw-label">H:</span>
+        <div class="btrack flex-1"><div class="bfill bf-o" id="disk-h-bar" style="width:0%"></div></div>
+      </div>
+      <div class="memrow"><div><span class="memval dval" id="disk-h-used">0</span><span class="memunit"> Go</span></div><div class="memtot" id="disk-h-total">/ — Go</div></div>
+    </div>
+
+  </div><!-- /blk-disks -->
+
+</div><!-- /left-col -->
+
+<!-- ════════════════════════════════════════════════════════════
+     CENTRE : Horloge
+     ════════════════════════════════════════════════════════════ -->
+<div class="dtblock">
+  <div class="clock-val"  x-text="clock"></div>
+  <div class="clock-date" x-text="dateStr"></div>
+  <div class="clock-loc"  x-show="cfg.showCity" x-text="cfg.city"></div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     DROITE : Météo
+     ════════════════════════════════════════════════════════════ -->
+<div class="right-col" id="blk-meteo"
+     :class="{ 'hide-source': !cfg.showWeatherSource }"
+     x-show="show.meteo">
+  <div class="panel">
+    <div class="ptitle" x-text="'◈ ' + weatherTitle()"></div>
+    <div x-html="weatherHtml"></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     BAS : Panneau Média
+     ════════════════════════════════════════════════════════════ -->
+<div id="media-panel" x-show="show.media">
+  <div class="media-main">
+
+    <div class="mart">
+      <img id="media-art-img" alt="">
+      <div id="media-icon-ph">
+        <div class="nomedia">
+          <div class="nm-bars">
+            <div class="nm-bar nm-b1"></div>
+            <div class="nm-bar nm-b2"></div>
+            <div class="nm-bar nm-b3"></div>
+            <div class="nm-bar nm-b4"></div>
+            <div class="nm-bar nm-b5"></div>
+          </div>
+          <div class="nm-note" x-text="T('no_media')">NO MEDIA</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="minfo">
+      <div class="mlabel" x-text="T('media_label')">◈ LECTURE EN COURS</div>
+      <div class="mtitle"  x-text="mediaTitle"></div>
+      <div class="martist" x-text="mediaArtist">—</div>
+      <div class="mprog">
+        <div class="progbar"><div class="progfill" id="prog-fill" style="width:0%"></div></div>
+        <div class="progtime">
+          <span id="time-el">0:00</span>
+          <span id="time-tot">0:00</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div class="media-viz" id="media-viz"></div>
+</div>
+
+</body>
+</html>
