@@ -15,6 +15,7 @@
 ;    C. SysViewManager.exe (GitHub Releases ou compilation dotnet)
 ;    D. runtime_config.json -> %AppData%\SysViewManager\
 ;    E. Tache planifiee ONLOGON / HIGHEST + lancement immediat
+;    F. Extension navigateur (pack .crx + registre Brave/Chrome/Edge)
 ;
 ;  Architecture V6 :
 ;    SysViewManager.exe  (C# .NET 8, admin, single-file self-contained)
@@ -54,8 +55,8 @@ Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
 
 [Messages]
 fr.WelcomeLabel1=Bienvenue dans l'installeur de SysView V6
-fr.WelcomeLabel2=Ce programme va :%n%n  · Telecharger le wallpaper SysView V6 depuis GitHub%n  · Installer SysViewManager.exe (pre-compile depuis GitHub Releases)%n  · Configurer la meteo pour votre ville (geocodage automatique)%n  · Creer la tache planifiee au demarrage (admin)%n  · Lancer SysViewManager immediatement%n%nAucune dependance Python ou autre runtime n'est necessaire.
-fr.FinishedLabel=SysView V6 est installe et en cours d'execution.%n%nSysViewManager tourne dans la barre systeme.%n%nAPI locale :%n  http://127.0.0.1:5001/v1/status%n%nDonnees :%n  %%AppData%%\SysViewManager\Hardware.json%n  %%AppData%%\SysViewManager\Weather.json%n%nExtension Chrome (optionnel) :%n  1. Ouvrez  chrome://extensions%n  2. Activez "Mode developpeur"%n  3. Cliquez "Charger l'extension non empaquetee"%n  4. Selectionnez le dossier  SysViewExtension\%n%nOuvrez Wallpaper Engine et selectionnez SysView V6.
+fr.WelcomeLabel2=Ce programme va :%n%n  · Telecharger le wallpaper SysView V6 depuis GitHub%n  · Installer SysViewManager.exe (pre-compile depuis GitHub Releases)%n  · Configurer la meteo pour votre ville (geocodage automatique)%n  · Creer la tache planifiee au demarrage (admin)%n  · Lancer SysViewManager immediatement%n  · Installer l'extension navigateur (Brave/Chrome/Edge) automatiquement%n%nAucune dependance Python ou autre runtime n'est necessaire.
+fr.FinishedLabel=SysView V6 est installe et en cours d'execution.%n%nSysViewManager tourne dans la barre systeme.%n%nAPI locale :%n  http://127.0.0.1:5001/v1/status%n%nExtension navigateur :%n  Installee automatiquement dans Brave/Chrome/Edge.%n  Si elle n'apparait pas : redemarrez le navigateur.%n%nOuvrez Wallpaper Engine et selectionnez SysView V6.
 
 [CustomMessages]
 fr.DirPageTitle=Dossier Wallpaper Engine
@@ -604,7 +605,7 @@ begin
   // ── runtime_config.json ───────────────────────────────────────────────────
   SetStatus('[3/3] Ecriture de la configuration meteo...');
   WriteRuntimeConfig;
-  SetProgress(82);
+  SetProgress(74);
 
   // ── Tache planifiee ONLOGON / HIGHEST ────────────────────────────────────
   SetStatus('[3/3] Configuration du demarrage automatique...');
@@ -633,7 +634,7 @@ begin
       False);
   end;
 
-  SetProgress(88);
+  SetProgress(79);
 
   // ── Lancer SysViewManager immediatement ──────────────────────────────────
   SetStatus('[3/3] Lancement de SysViewManager...');
@@ -649,7 +650,7 @@ begin
     // Direct (l'installeur tourne deja en admin)
     Exec(gMgrExe, '', gDest, SW_HIDE, ewNoWait, RC);
 
-  SetProgress(93);
+  SetProgress(83);
 
   // ── Attente port 5001 (max 30 s) ─────────────────────────────────────────
   AppendLog('Attente du Bridge (port ' + IntToStr(BRIDGE_PORT) + ')...');
@@ -665,6 +666,180 @@ begin
     AppendLog('[INFO] Bridge non detecte sur le port -- SysViewManager demarre peut-etre en arriere-plan.');
 
   Result := True;
+end;
+
+
+// =========================================================
+//  ETAPE F -- EXTENSION NAVIGATEUR (pack .crx + registre)
+// =========================================================
+
+// Enregistre l'extension dans le registre Windows pour Brave, Chrome et Edge.
+// Chrome/Brave/Edge lit HKLM\SOFTWARE\...\Extensions\{id}\
+//   external_crx     = chemin vers le .crx
+//   external_version = "1.0.0"
+// L'extension s'installe automatiquement au prochain lancement du navigateur.
+procedure StepInstallExt;
+var
+  ExtDir  : String;
+  ParDir  : String;
+  CrxSrc  : String;
+  CrxDest : String;
+  KeySrc  : String;
+  KeyDest : String;
+  OutFile : String;
+  BrowserExe : String;
+  ExtId   : String;
+  Lines   : TStringList;
+  RC      : Integer;
+begin
+  ExtDir  := gDest + '\SysViewManager\browser-ext';
+  ParDir  := gDest + '\SysViewManager';
+  CrxDest := ExtDir + '\sysview-media.crx';
+  KeyDest := ExtDir + '\sysview-media.pem';
+  CrxSrc  := ParDir + '\browser-ext.crx';
+  KeySrc  := ParDir + '\browser-ext.pem';
+
+  if not DirExists(ExtDir) then begin
+    AppendLog('[AVERT] Extension : dossier browser-ext absent -- etape ignoree.');
+    Exit;
+  end;
+
+  SetStatus('[4/4] Extension navigateur...');
+
+  // ── Trouver le navigateur Chromium ───────────────────────────────────────
+  OutFile := ExpandConstant('{tmp}\sv_browser.txt');
+  DeleteFile(OutFile);
+  ExecPS(
+    '$p=@(' +
+    '"$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe",' +
+    '"$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe",' +
+    '"$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe",' +
+    '"$env:ProgramFiles\Google\Chrome\Application\chrome.exe",' +
+    '"${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",' +
+    '"$env:LOCALAPPDATA\Microsoft\Edge\Application\msedge.exe"' +
+    ');' +
+    '$b=$p|Where-Object{Test-Path $_}|Select-Object -First 1;' +
+    'if($b){Set-Content ''' + OutFile + ''' $b -Encoding UTF8}');
+
+  BrowserExe := '';
+  if FileExists(OutFile) then begin
+    Lines := TStringList.Create;
+    try
+      Lines.LoadFromFile(OutFile);
+      if Lines.Count > 0 then BrowserExe := Trim(Lines[0]);
+    finally Lines.Free; end;
+  end;
+
+  if BrowserExe = '' then begin
+    AppendLog('[AVERT] Extension : navigateur introuvable -- extension non installee automatiquement.');
+    AppendLog('[INFO]  Installation manuelle : ouvrez chrome://extensions, activez le mode developpeur,');
+    AppendLog('[INFO]  cliquez "Charger extension non empaquetee" et selectionnez :');
+    AppendLog('[INFO]  ' + ExtDir);
+    Exit;
+  end;
+  AppendLog('[OK] Extension : navigateur = ' + BrowserExe);
+
+  // ── Fermer le navigateur si ouvert (requis par --pack-extension) ─────────
+  ExecPS(
+    '$n=[IO.Path]::GetFileNameWithoutExtension(''' + BrowserExe + ''');' +
+    'Get-Process -Name $n -EA SilentlyContinue|Stop-Process -Force;' +
+    'Start-Sleep -Seconds 2');
+
+  // ── Emballer en .crx (le packer cree les fichiers dans le dossier parent) ─
+  if not FileExists(CrxDest) then begin
+    AppendLog('[...] Extension : emballage en .crx...');
+    // Fournir la cle si elle existe deja (ID consistant entre installations)
+    if FileExists(KeyDest) then
+      Exec(ExpandConstant('{cmd}'),
+        '/c "' + BrowserExe + '"' +
+        ' --pack-extension="' + ExtDir + '"' +
+        ' --pack-extension-key="' + KeyDest + '"' +
+        ' >> "' + LogFilePath + '" 2>&1',
+        '', SW_HIDE, ewWaitUntilTerminated, RC)
+    else
+      Exec(ExpandConstant('{cmd}'),
+        '/c "' + BrowserExe + '"' +
+        ' --pack-extension="' + ExtDir + '"' +
+        ' >> "' + LogFilePath + '" 2>&1',
+        '', SW_HIDE, ewWaitUntilTerminated, RC);
+
+    Sleep(2500);
+
+    // Deplacer .crx et .pem depuis le dossier parent vers browser-ext\
+    if FileExists(CrxSrc) then begin
+      CopyFile(CrxSrc, CrxDest, True);
+      DeleteFile(CrxSrc);
+    end;
+    if FileExists(KeySrc) and not FileExists(KeyDest) then begin
+      CopyFile(KeySrc, KeyDest, True);
+      DeleteFile(KeySrc);
+    end else if FileExists(KeySrc) then
+      DeleteFile(KeySrc);
+  end;
+
+  if not FileExists(CrxDest) then begin
+    AppendLog('[AVERT] Extension : emballage echoue -- installation manuelle necessaire.');
+    AppendLog('[INFO]  Chemin extension : ' + ExtDir);
+    Exit;
+  end;
+  AppendLog('[OK] Extension : CRX pret = ' + CrxDest);
+
+  // ── Calculer l'ID depuis la cle publique (SHA-256, encodage a-p) ─────────
+  OutFile := ExpandConstant('{tmp}\sv_extid.txt');
+  DeleteFile(OutFile);
+  if FileExists(KeyDest) then
+    ExecPS(
+      'try{' +
+      '$pem=Get-Content ''' + KeyDest + ''';' +
+      '$b64=($pem|Where-Object{$_ -notmatch "^-----"})-join "";' +
+      '$der=[Convert]::FromBase64String($b64);' +
+      '$h=[Security.Cryptography.SHA256]::Create().ComputeHash($der);' +
+      '$id=($h[0..15]|ForEach-Object{' +
+      '[char]([int][char]"a"+($_-shr 4));[char]([int][char]"a"+($_-band 15))' +
+      '})-join "";' +
+      'Set-Content ''' + OutFile + ''' $id -Encoding UTF8' +
+      '}catch{Set-Content ''' + OutFile + ''' "" -Encoding UTF8}');
+
+  ExtId := '';
+  if FileExists(OutFile) then begin
+    Lines := TStringList.Create;
+    try
+      Lines.LoadFromFile(OutFile);
+      if Lines.Count > 0 then ExtId := Trim(Lines[0]);
+    finally Lines.Free; end;
+  end;
+
+  if Length(ExtId) <> 32 then begin
+    AppendLog('[AVERT] Extension : calcul ID echoue -- registre non modifie.');
+    AppendLog('[INFO]  Installation manuelle : chrome://extensions > mode dev > charger extension');
+    Exit;
+  end;
+  AppendLog('[OK] Extension ID : ' + ExtId);
+
+  // ── Ajouter dans le registre pour Brave, Chrome et Edge ──────────────────
+  // HKLM\SOFTWARE\[WOW6432Node\]{Editeur}\{Navigateur}\Extensions\{id}
+  //   external_crx     = chemin complet vers le .crx
+  //   external_version = "1.0.0"
+  ExecPS(
+    '$id="' + ExtId + '";' +
+    '$crx="' + CrxDest + '";' +
+    '$ver="1.0.0";' +
+    '$roots=@(' +
+    '"HKLM:\SOFTWARE\BraveSoftware\Brave\Extensions\$id",' +
+    '"HKLM:\SOFTWARE\WOW6432Node\BraveSoftware\Brave\Extensions\$id",' +
+    '"HKLM:\SOFTWARE\Google\Chrome\Extensions\$id",' +
+    '"HKLM:\SOFTWARE\WOW6432Node\Google\Chrome\Extensions\$id",' +
+    '"HKLM:\SOFTWARE\Microsoft\Edge\Extensions\$id",' +
+    '"HKLM:\SOFTWARE\WOW6432Node\Microsoft\Edge\Extensions\$id"' +
+    ');' +
+    'foreach($r in $roots){' +
+    'if(!(Test-Path $r)){New-Item -Path $r -Force|Out-Null};' +
+    'Set-ItemProperty -Path $r -Name external_crx     -Value $crx;' +
+    'Set-ItemProperty -Path $r -Name external_version -Value $ver' +
+    '}');
+
+  AppendLog('[OK] Extension : cles registre ajoutees pour Brave / Chrome / Edge.');
+  AppendLog('[INFO] L''extension s''installe au prochain demarrage du navigateur.');
 end;
 
 
@@ -701,7 +876,7 @@ begin
   SetProgress(8);
 
   // ── Etape B : wallpaper ───────────────────────────────────────────────────
-  SetStatus('[1/3] Telechargement du wallpaper...');
+  SetStatus('[1/4] Telechargement du wallpaper...');
   if not StepDownload then begin
     MsgBox(
       'Echec du telechargement du wallpaper.' + #13#10 +
@@ -710,10 +885,10 @@ begin
       mbError, MB_OK);
     Exit;
   end;
-  SetProgress(45);
+  SetProgress(40);
 
   // ── Etape C : exe ────────────────────────────────────────────────────────
-  SetStatus('[2/3] Obtention de SysViewManager.exe...');
+  SetStatus('[2/4] Obtention de SysViewManager.exe...');
   if not StepGetExe then begin
     MsgBox(
       'Impossible d''obtenir SysViewManager.exe.' + #13#10 + #13#10 +
@@ -721,10 +896,10 @@ begin
       mbError, MB_OK);
     Exit;
   end;
-  SetProgress(78);
+  SetProgress(70);
 
   // ── Etapes D+E : config + demarrage ──────────────────────────────────────
-  SetStatus('[3/3] Configuration et lancement...');
+  SetStatus('[3/4] Configuration et lancement...');
   if not StepConfigAndStart then begin
     MsgBox(
       'Erreur lors du demarrage de SysViewManager.' + #13#10 +
@@ -732,6 +907,10 @@ begin
       mbError, MB_OK);
     Exit;
   end;
+  SetProgress(85);
+
+  // ── Etape F : extension navigateur ───────────────────────────────────────
+  StepInstallExt;
   SetProgress(100);
 
   AppendLog('');
@@ -866,7 +1045,8 @@ begin
     Space + 'B. Telechargement wallpaper SysView V6 (GitHub)' + NewLine +
     Space + 'C. SysViewManager.exe (GitHub Releases ou compilation)' + NewLine +
     Space + 'D. runtime_config.json -> %AppData%\SysViewManager\' + NewLine +
-    Space + 'E. Tache planifiee ONLOGON / HIGHEST + lancement' + NewLine + NewLine +
+    Space + 'E. Tache planifiee ONLOGON / HIGHEST + lancement' + NewLine +
+    Space + 'F. Extension navigateur (Brave/Chrome/Edge) -- auto-install' + NewLine + NewLine +
     'Aucune dependance Python requise.';
 end;
 
