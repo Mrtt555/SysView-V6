@@ -226,8 +226,19 @@ public sealed class HardwareService : IDisposable
     }
 
     // ─── GPU via compteurs Windows PDH (même méthode que le Gestionnaire des tâches) ──
-    // Task Manager additionne TOUS les moteurs GPU (3D + Copy + VideoDecode + VideoEncode…)
-    // pour obtenir l'utilisation totale. On fait pareil en ne filtrant PAS sur engtype_3D.
+    // On additionne uniquement les moteurs de charge réelle (whitelist).
+    // Exclus : PreemptionQuery, Unknown, DMA et autres moteurs de gestion interne.
+
+    // Moteurs GPU représentant un travail réel (identiques aux graphes Task Manager)
+    private static readonly string[] _gpuWorkloadEngines =
+    [
+        "engtype_3D", "engtype_Copy", "engtype_Compute",
+        "engtype_VideoDecode", "engtype_VideoEncode", "engtype_VideoProcessing",
+        "engtype_SceneAssembly", "engtype_Overlay", "engtype_Crypto", "engtype_VR",
+    ];
+
+    private static bool IsWorkloadEngine(string instanceName) =>
+        _gpuWorkloadEngines.Any(t => instanceName.Contains(t, StringComparison.OrdinalIgnoreCase));
 
     private void InitGpuPdh()
     {
@@ -237,12 +248,13 @@ public sealed class HardwareService : IDisposable
             var cat       = new PerformanceCounterCategory("GPU Engine");
             var instances = cat.GetInstanceNames();
             _gpuPdhCounters = instances
+                .Where(IsWorkloadEngine)
                 .Select(n => new PerformanceCounter("GPU Engine", "Utilization Percentage", n, true))
                 .ToList();
             // Premier appel toujours 0 — sert juste à initialiser le compteur
             foreach (var c in _gpuPdhCounters) { try { c.NextValue(); } catch { } }
             _gpuPdhInit = true;
-            Logger.Info("LHM", $"GPU PDH : {_gpuPdhCounters.Count} instance(s) tous moteurs — source identique au Gestionnaire des tâches");
+            Logger.Info("LHM", $"GPU PDH : {_gpuPdhCounters.Count} instance(s) workload — source identique au Gestionnaire des tâches");
         }
         catch (Exception ex)
         {
@@ -260,6 +272,7 @@ public sealed class HardwareService : IDisposable
         {
             var cat       = new PerformanceCounterCategory("GPU Engine");
             var liveNames = cat.GetInstanceNames()
+                .Where(IsWorkloadEngine)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             var tracked = _gpuPdhCounters
