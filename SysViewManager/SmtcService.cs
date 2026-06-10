@@ -345,6 +345,8 @@ public sealed class SmtcService : IDisposable
                               GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
             double position = timeline?.Position.TotalSeconds ?? 0;
             double duration = timeline?.EndTime.TotalSeconds  ?? 0;
+            // Certains navigateurs (Disney+, Netflix…) exposent MaxSeekTime au lieu de EndTime
+            if (duration <= 0) duration = timeline?.MaxSeekTime.TotalSeconds ?? 0;
 
             // ── Nettoyage du titre (services de streaming) ────────────────────
             // Ex: "Prime Video: The Boys" → title="The Boys", service="Prime Video"

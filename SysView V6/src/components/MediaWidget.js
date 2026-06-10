@@ -45,15 +45,17 @@ export function renderProgress(snap, mediaDur, mediaPos, bridgeOk) {
   var ttEl  = document.getElementById('time-tot');
   if (!bar) return;
 
+  var progRow = bar.closest('.mprog');
   if (mediaDur <= 0) {
     if (snap) {
-      bar.style.transition = 'none';
       bar.style.width = '0%';
-      if (telEl) telEl.textContent = '0:00';
-      if (ttEl)  ttEl.textContent  = '0:00';
+      if (telEl) telEl.textContent = '';
+      if (ttEl)  ttEl.textContent  = '';
+      if (progRow) progRow.style.visibility = 'hidden';
     }
     return;
   }
+  if (progRow) progRow.style.visibility = '';
 
   var pct = Math.min(100, mediaPos / mediaDur * 100);
   bar.style.transition = 'none';
