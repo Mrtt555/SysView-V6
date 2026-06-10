@@ -81,9 +81,14 @@
   }
 
   // ── Données mediaSession reçues depuis content-main.js ─────
+  // detail est une string JSON (les objets ne traversent pas la frontière
+  // MAIN→ISOLATED de façon fiable — le primitif string passe toujours).
   var _session = { title: '', artist: '', artwork: [], state: '' };
   document.addEventListener('__sysview_session', function (e) {
-    _session = e.detail;
+    try {
+      var d = JSON.parse(e.detail);
+      if (d && typeof d === 'object') _session = d;
+    } catch (err) {}
   });
 
   var _lastKey  = '';
