@@ -57,14 +57,31 @@
     var best = null;
     for (var i = 0; i < videos.length; i++) {
       var v = videos[i];
-      if (!v.src && !v.currentSrc) continue;
+      // HAVE_NOTHING → pas encore chargé, ignorer
+      if (v.readyState < 1) continue;
       if (!best) { best = v; continue; }
-      if (!v.paused && best.paused)               { best = v; continue; }
-      if (v.paused && !best.paused)               continue;
+      // 1. Lecture active > pause
+      if (!v.paused && best.paused)  { best = v; continue; }
+      if (v.paused  && !best.paused) continue;
+      // 2. Position la plus avancée → c'est le contenu principal
+      //    (les previews/banners démarrent à 0 ; le vrai film est à N minutes)
+      var vt = v.currentTime   || 0;
+      var bt = best.currentTime || 0;
+      if (vt > bt) { best = v; continue; }
+      if (vt < bt) continue;
+      // 3. Plus grande résolution (contenu HD > vignette)
+      var va = (v.videoWidth    || 0) * (v.videoHeight    || 0);
+      var ba = (best.videoWidth || 0) * (best.videoHeight || 0);
+      if (va > ba) { best = v; continue; }
+      if (va < ba) continue;
+      // 4. Durée la plus longue
       if ((v.duration || 0) > (best.duration || 0)) best = v;
     }
     return best;
   }
+
+  // Titres purement génériques (nom de la plateforme seul, sans nom d'émission)
+  var _GENERIC = /^(Netflix|Disney\+|Prime Video|Amazon Prime Video|Hulu|Max|YouTube|YouTube Music|Spotify|Deezer|Tidal|SoundCloud|Crunchyroll|Twitch|Vimeo|Dailymotion|Peacock|Paramount\+|Apple TV\+|Plex|Emby|Jellyfin|Canal\+|TF1\+|ARTE|France\.tv|MUBI)([\s :,]|$)/i;
 
   function bestArtwork(artworkList) {
     if (!artworkList || !artworkList.length) return '';
@@ -127,6 +144,8 @@
         .replace(/\s*[|–—]\s*(Disney\+|Netflix|Prime Video|Amazon|Hulu|Max|YouTube|YouTube Music|Spotify|Deezer|Tidal|SoundCloud|Crunchyroll|Twitch|Vimeo|Dailymotion|Peacock|Paramount\+|Apple TV\+|Plex|Emby|Jellyfin|Canal\+|TF1\+|ARTE|France\.tv|MUBI)\s*$/i, '')
         .trim() || document.title;
     }
+    // Rejeter les titres qui sont juste le nom de la plateforme
+    if (title && _GENERIC.test(title)) title = '';
 
     var msg = {
       type:     'media',
