@@ -1,7 +1,7 @@
 // =============================================================
-// content.js — SysView Media Bridge (world: MAIN)
-// Lit navigator.mediaSession et les éléments <video> de la page,
-// puis envoie les données au service worker via chrome.runtime.
+// content.js — SysView Media Bridge (world: ISOLATED)
+// Reçoit les métadonnées mediaSession depuis content-main.js,
+// lit les éléments <video>, et pousse vers le service worker.
 // =============================================================
 (function () {
   'use strict';
@@ -41,17 +41,14 @@
 
   function detectService(host) {
     if (SVC[host]) return SVC[host];
-    // Test sous-domaines (ex: www.netflix.com → netflix.com)
     var parts = host.split('.');
     for (var i = 1; i < parts.length - 1; i++) {
       var k = parts.slice(i).join('.');
       if (SVC[k]) return SVC[k];
     }
-    // Jellyfin auto-hébergé : méta application-name = "Jellyfin"
     var appMeta = document.querySelector('meta[name="application-name"]');
     if (appMeta && appMeta.content === 'Jellyfin') return 'Jellyfin';
-    // Emby auto-hébergé
-    if (appMeta && appMeta.content === 'Emby') return 'Emby';
+    if (appMeta && appMeta.content === 'Emby')     return 'Emby';
     return '';
   }
 
@@ -62,7 +59,6 @@
       var v = videos[i];
       if (!v.src && !v.currentSrc) continue;
       if (!best) { best = v; continue; }
-      // Préférer la vidéo en cours de lecture, puis la plus longue
       if (!v.paused && best.paused)               { best = v; continue; }
       if (v.paused && !best.paused)               continue;
       if ((v.duration || 0) > (best.duration || 0)) best = v;
@@ -80,10 +76,15 @@
       if (w > bw) best = a;
     }
     var src = best.src || '';
-    // Ignorer les blob: URLs (non transférables) et les data: (trop lourds)
     if (src.startsWith('blob:') || src.startsWith('data:')) return '';
     return src;
   }
+
+  // ── Données mediaSession reçues depuis content-main.js ─────
+  var _session = { title: '', artist: '', artwork: [], state: '' };
+  document.addEventListener('__sysview_session', function (e) {
+    _session = e.detail;
+  });
 
   var _lastKey  = '';
   var _lastSent = 0;
@@ -92,11 +93,12 @@
     var host    = window.location.hostname;
     var service = detectService(host);
     var video   = bestVideo();
-    var session = navigator.mediaSession;
-    var meta    = session ? session.metadata : null;
+    var title   = _session.title;
+    var artist  = _session.artist;
+    var artwork = bestArtwork(_session.artwork);
 
     // Aucun média sur cette page
-    if (!video && !meta) {
+    if (!video && !title) {
       if (_lastKey !== 'empty') {
         _lastKey  = 'empty';
         _lastSent = 0;
@@ -107,17 +109,14 @@
 
     var playing = video
       ? !video.paused
-      : (session && session.playbackState === 'playing');
+      : (_session.state === 'playing');
 
-    var title   = (meta && meta.title)  || '';
-    var artist  = (meta && meta.artist) || '';
-    var artwork = bestArtwork(meta && meta.artwork);
-    var pos     = video ? Math.round(video.currentTime) : 0;
-    var dur     = (video && isFinite(video.duration) && video.duration > 0)
-                ? Math.round(video.duration)
-                : 0;
+    var pos = video ? Math.round(video.currentTime) : 0;
+    var dur = (video && isFinite(video.duration) && video.duration > 0)
+            ? Math.round(video.duration)
+            : 0;
 
-    // Fallback titre depuis le titre de la page (sans le suffixe " | Netflix", " | Disney+" etc.)
+    // Fallback titre depuis document.title (sans le suffixe " | Netflix" etc.)
     if (!title && document.title) {
       title = document.title
         .replace(/\s*[|–—]\s*(Disney\+|Netflix|Prime Video|Amazon|Hulu|Max|YouTube|YouTube Music|Spotify|Deezer|Tidal|SoundCloud|Crunchyroll|Twitch|Vimeo|Dailymotion|Peacock|Paramount\+|Apple TV\+|Plex|Emby|Jellyfin|Canal\+|TF1\+|ARTE|France\.tv|MUBI)\s*$/i, '')
@@ -138,7 +137,6 @@
 
     var key = msg.title + '|' + msg.playing + '|' + msg.position;
     var now = Date.now();
-    // Envoyer si : données changées OU heartbeat 2s (maintient le tab frais en pause)
     if (key === _lastKey && (now - _lastSent) < 2000) return;
     _lastKey  = key;
     _lastSent = now;
