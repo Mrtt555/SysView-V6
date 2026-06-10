@@ -15,7 +15,6 @@
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"],
-      "world": "MAIN",
       "run_at": "document_idle"
     }
   ]

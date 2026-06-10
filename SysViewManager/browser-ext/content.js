@@ -117,8 +117,12 @@
                 ? Math.round(video.duration)
                 : 0;
 
-    // Fallback titre depuis le titre de la page
-    if (!title) title = document.title || '';
+    // Fallback titre depuis le titre de la page (sans le suffixe " | Netflix", " | Disney+" etc.)
+    if (!title && document.title) {
+      title = document.title
+        .replace(/\s*[|–—]\s*(Disney\+|Netflix|Prime Video|Amazon|Hulu|Max|YouTube|YouTube Music|Spotify|Deezer|Tidal|SoundCloud|Crunchyroll|Twitch|Vimeo|Dailymotion|Peacock|Paramount\+|Apple TV\+|Plex|Emby|Jellyfin|Canal\+|TF1\+|ARTE|France\.tv|MUBI)\s*$/i, '')
+        .trim() || document.title;
+    }
 
     var msg = {
       type:     'media',
