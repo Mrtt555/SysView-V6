@@ -40,8 +40,8 @@ function bestTab() {
   var now = Date.now();
   for (var id in _tabs) {
     var t = _tabs[id];
-    // Ignorer les données > 5 s (onglet inactif / service worker redémarré)
-    if (now - t.ts > 5000) { delete _tabs[id]; continue; }
+    // Ignorer les données > 3 s (onglet inactif / service worker redémarré)
+    if (now - t.ts > 3000) { delete _tabs[id]; continue; }
     if (!best) { best = t; continue; }
     // Préférer la lecture active
     if (t.playing && !best.playing) { best = t; continue; }

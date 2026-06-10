@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <!-- windows10.0.17763 = Windows 10 1809 — requis pour SMTC (GlobalSystemMediaTransportControlsSessionManager) -->
+    <!-- windows10.0.17763 = Windows 10 1809+ requis pour les APIs Windows modernes -->
     <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>

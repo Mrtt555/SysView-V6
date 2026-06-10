@@ -84,7 +84,7 @@ public sealed class BridgeServer
                 o.QueueLimit  = 0;
             });
             opt.AddFixedWindowLimiter("ext", o => {
-                o.PermitLimit = 600;  // ~10 req/s — extension envoie 1/s par onglet
+                o.PermitLimit = 1200; // ~2 req/s par onglet (polling 500ms)
                 o.Window      = TimeSpan.FromMinutes(1);
                 o.QueueLimit  = 0;
             });
@@ -468,8 +468,8 @@ public sealed class BridgeServer
         }).RequireRateLimiting("api");
 
         Logger.Info("Bridge", $"Démarrage du serveur HTTP sur http://127.0.0.1:{PORT}");
-        Logger.Info("Bridge", "Endpoints : GET /v1/health  /v1/perf  /v1/weather  /v1/media  /v1/status  /v1/models");
-        Logger.Info("Bridge", "Endpoints : POST /v1/config");
+        Logger.Info("Bridge", "GET  /v1/health  /v1/perf  /v1/weather  /v1/media  /v1/status  /v1/models");
+        Logger.Info("Bridge", "POST /v1/config  /v1/media/ext");
 
         await app.RunAsync(ct);
 
