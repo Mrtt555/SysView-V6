@@ -23,9 +23,3 @@ certs/*.p12
 
 # Claude Code internal
 .claude/
-
-# Dossiers développement local — trackés sur leurs branches dédiées
-# (branch SysViewManager / branch Installeur)
-SysViewManager/
-scripts/
-installer/
