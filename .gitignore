@@ -21,5 +21,8 @@ certs/*.p12
 *.pid
 *.tmp
 
+# Exe compile en local (trop lourd pour git — dispo via GitHub Releases)
+SysViewManager.exe
+
 # Claude Code internal
 .claude/

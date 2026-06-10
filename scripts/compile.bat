@@ -40,6 +40,17 @@ echo.
 echo  Build OK  -  v!NEW_VERSION!
 echo.
 
+:: -- Copie exe a la racine ------------------------------------
+set "EXE_SRC=%~dp0..\SysViewManager\bin\Release\net8.0-windows10.0.17763.0\win-x64\publish\SysViewManager.exe"
+set "EXE_DST=%~dp0..\SysViewManager.exe"
+if exist "!EXE_SRC!" (
+    copy /Y "!EXE_SRC!" "!EXE_DST!" >nul
+    echo  SysViewManager.exe copie a la racine.
+) else (
+    echo  ATTENTION : exe introuvable, copie ignoree.
+)
+echo.
+
 :: -- 2. Commit + push master -----------------------------------
 echo  [1/2] Commit + push master...
 git add -A
