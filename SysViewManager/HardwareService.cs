@@ -226,7 +226,8 @@ public sealed class HardwareService : IDisposable
     }
 
     // ─── GPU via compteurs Windows PDH (même méthode que le Gestionnaire des tâches) ──
-    // Task Manager lit \GPU Engine(*engtype_3D*)\Utilization Percentage — on fait pareil.
+    // Task Manager additionne TOUS les moteurs GPU (3D + Copy + VideoDecode + VideoEncode…)
+    // pour obtenir l'utilisation totale. On fait pareil en ne filtrant PAS sur engtype_3D.
 
     private void InitGpuPdh()
     {
@@ -236,13 +237,12 @@ public sealed class HardwareService : IDisposable
             var cat       = new PerformanceCounterCategory("GPU Engine");
             var instances = cat.GetInstanceNames();
             _gpuPdhCounters = instances
-                .Where(n => n.Contains("engtype_3D", StringComparison.OrdinalIgnoreCase))
                 .Select(n => new PerformanceCounter("GPU Engine", "Utilization Percentage", n, true))
                 .ToList();
             // Premier appel toujours 0 — sert juste à initialiser le compteur
             foreach (var c in _gpuPdhCounters) { try { c.NextValue(); } catch { } }
             _gpuPdhInit = true;
-            Logger.Info("LHM", $"GPU PDH : {_gpuPdhCounters.Count} instance(s) 3D trouvée(s) — source identique au Gestionnaire des tâches");
+            Logger.Info("LHM", $"GPU PDH : {_gpuPdhCounters.Count} instance(s) tous moteurs — source identique au Gestionnaire des tâches");
         }
         catch (Exception ex)
         {
@@ -251,8 +251,8 @@ public sealed class HardwareService : IDisposable
         }
     }
 
-    // Ajoute les nouvelles instances PDH engtype_3D et retire celles des processus arrêtés.
-    // Appelé toutes les 5s pour suivre les lancements/arrêts de jeux.
+    // Ajoute les nouvelles instances PDH et retire celles des processus arrêtés.
+    // Appelé toutes les 5s pour suivre les lancements/arrêts de processus.
     private void RefreshGpuPdh()
     {
         if (_gpuPdhCounters == null) return;
@@ -260,7 +260,6 @@ public sealed class HardwareService : IDisposable
         {
             var cat       = new PerformanceCounterCategory("GPU Engine");
             var liveNames = cat.GetInstanceNames()
-                .Where(n => n.Contains("engtype_3D", StringComparison.OrdinalIgnoreCase))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             var tracked = _gpuPdhCounters
@@ -290,8 +289,8 @@ public sealed class HardwareService : IDisposable
         catch { }
     }
 
-    // Retourne la charge GPU 3D via PDH — correspondance Task Manager.
-    // Plusieurs instances si multi-GPU : on prend le max par LUID physique.
+    // Retourne l'utilisation totale GPU via PDH (tous moteurs additionnés, cap 100%).
+    // Identique au chiffre affiché dans le panneau gauche du Gestionnaire des tâches.
     private float? ReadGpuUsagePdh()
     {
         if (!_gpuPdhInit || _gpuPdhCounters == null || _gpuPdhCounters.Count == 0)
