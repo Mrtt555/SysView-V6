@@ -91,11 +91,13 @@ document.addEventListener('alpine:init', function() {
       clock:'00:00:00', dateStr:'—',
 
       weatherHtml: '<div style="color:rgba(200,170,255,.22);font-size:13px;letter-spacing:2px;">Connexion…</div>',
+      _lastWeatherData: null,
 
       mediaTitle:'', mediaArtist:'', mediaPlatform:'', mediaType:'', mediaPlaying:false,
       mediaPos:0,    mediaDur:0,
       _lastTitle:'', _lastThumb:'', _mediaGoneAt:0, _pausedSince:0,
-      _vizBars: null,   _audioSilent: 0,  _vizRunning: false,
+      _progPos:0, _progTs:0,
+      _vizBars: null,   _audioSilent: 0,
 
       bridgeOk:    false,
       _worker:     null,
@@ -138,7 +140,10 @@ document.addEventListener('alpine:init', function() {
         switch (msg.type) {
           case 'bridge':  this.bridgeOk = msg.ok;                              break;
           case 'lerp':    this._onLerp(msg.data);                              break;
-          case 'weather': this.weatherHtml = buildWeatherHtml(msg.data, this.cfg); break;
+          case 'weather':
+            this._lastWeatherData = msg.data;
+            this.weatherHtml = buildWeatherHtml(msg.data, this.cfg);
+            break;
           case 'media':   this._onMedia(msg.data);                             break;
         }
       },
@@ -236,15 +241,28 @@ document.addEventListener('alpine:init', function() {
 
         if (d.duration > 0) {
           this.mediaDur = d.duration; this.mediaPos = d.position;
-          this._renderProgress(titleChanged);
+          this._progPos = d.position; this._progTs = Date.now();
         } else if (titleChanged) {
           this.mediaDur = 0; this.mediaPos = 0;
-          this._renderProgress(true);
+          this._progPos = 0; this._progTs = 0;
+          renderProgress(true, 0, 0, this.bridgeOk);
         }
       },
 
       _startMediaLoop() {
         var self = this;
+        // Progress interpolation — mise à jour toutes les 100ms
+        setInterval(function() {
+          if (!self.mediaDur || !self._progTs) return;
+          if (self.mediaPlaying) {
+            var elapsed = (Date.now() - self._progTs) / 1000;
+            var pos = Math.min(self.mediaDur, self._progPos + elapsed);
+            renderProgress(false, self.mediaDur, pos, self.bridgeOk);
+          } else {
+            renderProgress(false, self.mediaDur, self._progPos, self.bridgeOk);
+          }
+        }, 100);
+        // Timeout pause → effacer le média après 5 min
         setInterval(function() {
           if (!self.bridgeOk || !self._lastTitle) return;
           if (self.mediaPlaying) { self._pausedSince = 0; return; }
@@ -260,6 +278,7 @@ document.addEventListener('alpine:init', function() {
         this._pausedSince = 0; this._mediaGoneAt = 0;
         this.mediaTitle = ''; this.mediaArtist = ''; this.mediaType = '';
         this.mediaPlaying = false; this.mediaDur = 0; this.mediaPos = 0;
+        this._progPos = 0; this._progTs = 0;
         var mart = document.querySelector('.mart');
         if (mart) { mart.classList.remove('mart--video'); mart.classList.remove('mart--landscape'); }
         var img = document.getElementById('media-art-img');
@@ -270,10 +289,6 @@ document.addEventListener('alpine:init', function() {
 
       _setAlbumArt(src) { setAlbumArt(src); },
 
-      _renderProgress(snap) {
-        renderProgress(snap, this.mediaDur, this.mediaPos, this.bridgeOk);
-      },
-
       // ── Visualiseur audio (WE) ───────────────────────────────
       _initViz() {
         var viz = document.getElementById('media-viz');
@@ -281,8 +296,6 @@ document.addEventListener('alpine:init', function() {
         for (var i = 0; i < 24; i++) {
           var b = document.createElement('div');
           b.className = 'viz-bar';
-          // Délai d'animation idle échelonné (ms) pour un effet de vague
-          b.style.setProperty('--vd', (i * 85) + 'ms');
           viz.appendChild(b);
         }
         this._vizBars = viz.querySelectorAll('.viz-bar');
@@ -303,26 +316,15 @@ document.addEventListener('alpine:init', function() {
           var scale = Math.max(0.03, Math.min(0.90, this._audioEma[i] * 0.9));
           if (bars[i]) bars[i].style.transform = 'scaleY(' + scale.toFixed(3) + ')';
         }
-        // CSS animations override inline style.transform — cancel when WE audio is active
-        if (anySound) {
-          this._audioSilent = 0;
-          if (!this._vizRunning) {
-            this._vizRunning = true;
-            for (var i = 0; i < 24; i++) {
-              if (bars[i]) bars[i].style.animationName = 'none';
+        if (!anySound) {
+          this._audioSilent++;
+          if (this._audioSilent > 45) {
+            for (var k = 0; k < 24; k++) {
+              if (bars[k]) bars[k].style.transform = 'scaleY(0.04)';
             }
           }
         } else {
-          this._audioSilent++;
-          if (this._audioSilent > 45) {
-            this._vizRunning = false;
-            for (var i = 0; i < 24; i++) {
-              if (bars[i]) {
-                bars[i].style.transform = '';
-                bars[i].style.animationName = '';
-              }
-            }
-          }
+          this._audioSilent = 0;
         }
       },
 
@@ -357,6 +359,11 @@ document.addEventListener('alpine:init', function() {
       },
 
       // ── Méthodes appelées par ThemeManager ───────────────────
+      _rebuildWeather() {
+        if (this._lastWeatherData)
+          this.weatherHtml = buildWeatherHtml(this._lastWeatherData, this.cfg);
+      },
+
       setOpacity(op) { theme.applyOpacity(op); },
 
       setLang(val) {

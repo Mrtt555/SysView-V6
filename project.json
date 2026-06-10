@@ -173,42 +173,67 @@
 				"index" : 47,
 				"options" :
 				[
-					{ "label" : "Inter (défaut)", "value" : "inter" },
-					{ "label" : "Segoe UI",       "value" : "segoe" },
-					{ "label" : "Roboto",         "value" : "roboto" },
-					{ "label" : "Poppins",        "value" : "poppins" },
-					{ "label" : "Montserrat",     "value" : "montserrat" },
-					{ "label" : "JetBrains Mono", "value" : "jetbrains" },
-					{ "label" : "Consolas",       "value" : "consolas" }
+					{ "label" : "Inter (défaut)",   "value" : "inter" },
+					{ "label" : "Segoe UI",         "value" : "segoe" },
+					{ "label" : "Rajdhani",         "value" : "rajdhani" },
+					{ "label" : "Exo 2",            "value" : "exo2" },
+					{ "label" : "Oxanium",          "value" : "oxanium" },
+					{ "label" : "Orbitron",         "value" : "orbitron" },
+					{ "label" : "Share Tech Mono",  "value" : "sharetech" },
+					{ "label" : "Consolas",         "value" : "consolas" }
 				],
 				"order" : 1025,
-				"text" : "Font family",
+				"text" : "Police d'affichage",
 				"type" : "combo",
 				"value" : "inter"
 			},
-			"bar_color_1" :
+			"bar_cpu_gpu" :
 			{
 				"index" : 48,
 				"order" : 1026,
-				"text" : "Bar color — CPU + GPU",
+				"text" : "Barre — CPU + GPU",
 				"type" : "color",
 				"value" : "0.784 0.549 1"
 			},
-			"bar_color_2" :
+			"bar_ram" :
 			{
 				"index" : 49,
 				"order" : 1027,
-				"text" : "Bar color — RAM + VRAM",
+				"text" : "Barre — RAM",
 				"type" : "color",
 				"value" : "1 0.549 0.235"
 			},
-			"bar_color_3" :
+			"bar_vram" :
 			{
 				"index" : 50,
 				"order" : 1028,
-				"text" : "Bar color — Network + Storage",
+				"text" : "Barre — VRAM",
+				"type" : "color",
+				"value" : "0.784 0.549 1"
+			},
+			"bar_dl" :
+			{
+				"index" : 51,
+				"order" : 1029,
+				"text" : "Barre — Download",
 				"type" : "color",
 				"value" : "0.353 0.667 1"
+			},
+			"bar_ul" :
+			{
+				"index" : 52,
+				"order" : 1030,
+				"text" : "Barre — Upload",
+				"type" : "color",
+				"value" : "0.353 0.667 1"
+			},
+			"bar_disk" :
+			{
+				"index" : 53,
+				"order" : 1031,
+				"text" : "Barre — Stockage",
+				"type" : "color",
+				"value" : "0.314 0.784 0.549"
 			},
 			"sep2" : 
 			{

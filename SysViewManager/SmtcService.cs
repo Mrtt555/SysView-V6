@@ -81,6 +81,8 @@ public sealed class SmtcService : IDisposable
         // ── YouTube — miniatures paysage 16:9 via SMTC ────────────────────
         (" - YouTube",           false, "YouTube"),
         (" | YouTube",           false, "YouTube"),
+        (" — YouTube",           false, "YouTube"),   // tiret em (Brave/Edge parfois)
+        (" – YouTube",           false, "YouTube"),   // tiret en
     };
 
     /// <summary>

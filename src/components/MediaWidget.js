@@ -56,7 +56,7 @@ export function renderProgress(snap, mediaDur, mediaPos, bridgeOk) {
   }
 
   var pct = Math.min(100, mediaPos / mediaDur * 100);
-  bar.style.transition = (snap || !bridgeOk) ? 'none' : 'width 1s linear';
+  bar.style.transition = 'none';
   bar.style.width = pct.toFixed(2) + '%';
   if (telEl) telEl.textContent = fmtTime(mediaPos);
   if (ttEl)  ttEl.textContent  = fmtTime(mediaDur);

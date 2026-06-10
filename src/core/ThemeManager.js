@@ -51,23 +51,44 @@ export class ThemeManager {
     if (p.accent2_color   !== undefined) r.style.setProperty('--s',  rgb(p.accent2_color));
     if (p.bg_color        !== undefined) r.style.setProperty('--bg', rgb(p.bg_color));
     if (p.text_color      !== undefined) r.style.setProperty('--tx', rgb(p.text_color));
-    if (p.bar_color_1 !== undefined) r.style.setProperty('--bar1', rgb(p.bar_color_1));
-    if (p.bar_color_2 !== undefined) r.style.setProperty('--bar2', rgb(p.bar_color_2));
-    if (p.bar_color_3 !== undefined) r.style.setProperty('--bar3', rgb(p.bar_color_3));
+    if (p.bar_cpu_gpu !== undefined) r.style.setProperty('--bar-cpugpu', rgb(p.bar_cpu_gpu));
+    if (p.bar_ram     !== undefined) r.style.setProperty('--bar-ram',    rgb(p.bar_ram));
+    if (p.bar_vram    !== undefined) r.style.setProperty('--bar-vram',   rgb(p.bar_vram));
+    if (p.bar_dl      !== undefined) r.style.setProperty('--bar-dl',     rgb(p.bar_dl));
+    if (p.bar_ul      !== undefined) r.style.setProperty('--bar-ul',     rgb(p.bar_ul));
+    if (p.bar_disk    !== undefined) r.style.setProperty('--bar-disk',   rgb(p.bar_disk));
 
     if (p.font_family !== undefined) {
-      var fontMap = {
+      var googleFonts = {
+        rajdhani:  'Rajdhani:wght@400;600;700',
+        exo2:      'Exo+2:wght@400;600;700',
+        oxanium:   'Oxanium:wght@400;600;700',
+        orbitron:  'Orbitron:wght@400;600;700',
+        sharetech: 'Share+Tech+Mono',
+      };
+      var fontStack = {
         inter:     "'Inter', 'Segoe UI', system-ui, sans-serif",
         segoe:     "'Segoe UI', system-ui, sans-serif",
-        roboto:    "'Roboto', 'Segoe UI', sans-serif",
-        poppins:   "'Poppins', 'Segoe UI', sans-serif",
-        montserrat:"'Montserrat', 'Segoe UI', sans-serif",
-        jetbrains: "'JetBrains Mono', 'Courier New', monospace",
+        rajdhani:  "'Rajdhani', 'Segoe UI', sans-serif",
+        exo2:      "'Exo 2', 'Segoe UI', sans-serif",
+        oxanium:   "'Oxanium', 'Segoe UI', sans-serif",
+        orbitron:  "'Orbitron', 'Segoe UI', sans-serif",
+        sharetech: "'Share Tech Mono', 'Consolas', monospace",
         consolas:  "'Consolas', 'Courier New', monospace",
       };
-      var ff = fontMap[p.font_family.value] || fontMap.inter;
+      var fk = p.font_family.value;
+      if (googleFonts[fk]) {
+        var linkId = 'gfont-' + fk;
+        if (!document.getElementById(linkId)) {
+          var lk = document.createElement('link');
+          lk.id = linkId; lk.rel = 'stylesheet';
+          lk.href = 'https://fonts.googleapis.com/css2?family=' + googleFonts[fk] + '&display=swap';
+          document.head.appendChild(lk);
+        }
+      }
+      var ff = fontStack[fk] || fontStack.inter;
       r.style.setProperty('--ff', ff);
-      document.body.style.fontFamily = ff;
+      document.documentElement.style.fontFamily = ff;
     }
 
     // ── Opacité globale ───────────────────────────────────────
@@ -105,7 +126,10 @@ export class ThemeManager {
       if (bm) bm.classList.toggle('hide-source', !sv.cfg.showWeatherSource);
     }
     if (p.temp_unit     !== undefined) sv.cfg.tempUnit    = p.temp_unit.value;
-    if (p.temp_decimal  !== undefined) sv.cfg.tempDecimal = !!p.temp_decimal.value;
+    if (p.temp_decimal  !== undefined) {
+      sv.cfg.tempDecimal = !!p.temp_decimal.value;
+      if (sv._rebuildWeather) sv._rebuildWeather();
+    }
     if (p.time_format   !== undefined) sv.cfg.timeFormat  = p.time_format.value;
     if (p.network_iface !== undefined) { sv.cfg.netIface = p.network_iface.value; sv.sendWeatherConfig(); }
 

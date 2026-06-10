@@ -6,11 +6,14 @@
 
 /* ─── CSS VARIABLES (configurables via Wallpaper Engine) ─── */
 :root {
-  --p:    160,100,255; /* Primary   — bordures, cadres        */
-  --s:    200,140,255; /* Secondary — actif, labels           */
-  --bar1: 200,140,255; /* Compute   — CPU + GPU               */
-  --bar2: 255,140,60;  /* Memory    — RAM + VRAM              */
-  --bar3: 90,170,255;  /* I/O       — Réseau + Stockage       */
+  --p:        160,100,255; /* Primary   — bordures, cadres    */
+  --s:        200,140,255; /* Secondary — actif, labels       */
+  --bar-cpugpu: 200,140,255;
+  --bar-ram:    255,140,60;
+  --bar-vram:   200,140,255;
+  --bar-dl:     90,170,255;
+  --bar-ul:     90,170,255;
+  --bar-disk:   80,200,140;
   --bg:   8,6,18;      /* Fond très sombre                    */
   --tx:   210,200,230; /* Texte                               */
   --op:   0.55;        /* Opacité globale                     */
@@ -197,9 +200,12 @@ html, body {
 }
 .no-api .bfill { transition: none !important; }
 .no-api .stat-temp, .no-api .stat-pct { transition: none !important; }
-.bf-1 { background: linear-gradient(90deg, rgba(var(--bar1),.30), rgba(var(--bar1),1)); } /* CPU + GPU  */
-.bf-2 { background: linear-gradient(90deg, rgba(var(--bar2),.30), rgba(var(--bar2),1)); } /* RAM + VRAM */
-.bf-3 { background: linear-gradient(90deg, rgba(var(--bar3),.30), rgba(var(--bar3),1)); } /* Net + I/O  */
+.bf-cpugpu { background: linear-gradient(90deg, rgba(var(--bar-cpugpu),.30), rgba(var(--bar-cpugpu),1)); }
+.bf-ram    { background: linear-gradient(90deg, rgba(var(--bar-ram),   .30), rgba(var(--bar-ram),   1)); }
+.bf-vram   { background: linear-gradient(90deg, rgba(var(--bar-vram),  .30), rgba(var(--bar-vram),  1)); }
+.bf-dl     { background: linear-gradient(90deg, rgba(var(--bar-dl),    .30), rgba(var(--bar-dl),    1)); }
+.bf-ul     { background: linear-gradient(90deg, rgba(var(--bar-ul),    .30), rgba(var(--bar-ul),    1)); }
+.bf-disk   { background: linear-gradient(90deg, rgba(var(--bar-disk),  .30), rgba(var(--bar-disk),  1)); }
 
 /* ─── MÉMOIRE (RAM / VRAM / Disques) ────────────────────── */
 .memrow {
@@ -409,12 +415,6 @@ html, body {
   background: linear-gradient(180deg, rgba(var(--s),.88) 0%, rgba(var(--p),.22) 100%);
   transform-origin: bottom center;
   height: calc(90px * var(--sz));
-  /* Animation idle CSS — JS override via style.transform quand WE fournit l'audio */
-  animation: viz-idle 2.2s ease-in-out infinite;
-  animation-delay: var(--vd, 0ms);
+  transform: scaleY(0.04);
   will-change: transform;
-}
-@keyframes viz-idle {
-  0%, 100% { transform: scaleY(0.04); }
-  50%       { transform: scaleY(0.18); }
 }
