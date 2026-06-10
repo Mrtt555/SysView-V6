@@ -371,6 +371,17 @@ public sealed class SmtcService : IDisposable
                     thumbUrl       = _lastThumbUrl;
                     thumbFromCache = true;
                 }
+                else if (!string.IsNullOrEmpty(service) && service != "YouTube")
+                {
+                    // Streaming vidéo (Netflix, Disney+, Prime…) : le navigateur expose
+                    // son icône d'application via SMTC, pas une vraie miniature.
+                    // → Ignorer SMTC et chercher directement le poster en ligne.
+                    Logger.Debug("SMTC", $"  Service streaming [{service}] → recherche poster en ligne (pas de SMTC thumb)");
+                    thumbUrl = await FetchOnlineThumbAsync(title, artist, service);
+                    thumbFromOnline = !string.IsNullOrEmpty(thumbUrl);
+                    _lastThumbTitle = title;
+                    _lastThumbUrl   = thumbUrl;
+                }
                 else if (props?.Thumbnail is { } thumb)
                 {
                     var swThumb = Stopwatch.StartNew();

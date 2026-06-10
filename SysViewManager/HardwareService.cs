@@ -48,6 +48,7 @@ public sealed class HardwareService : IDisposable
     // Compteurs Windows PDH pour le GPU (même source que le Gestionnaire des tâches)
     private List<PerformanceCounter>? _gpuPdhCounters;
     private bool _gpuPdhInit = false;
+    private int  _pdhPollCount = 0;
 
     private HardwareSnapshot _snap = new();
     private readonly object  _mu   = new();
@@ -113,6 +114,9 @@ public sealed class HardwareService : IDisposable
                 foreach (var h in _hw.Hardware)
                     ReadHardware(h, s);
             }
+
+            // Rafraîchir la liste PDH toutes les 5s (nouveaux processus GPU possibles)
+            if (++_pdhPollCount % 10 == 0) RefreshGpuPdh();
 
             // PDH GPU override : remplace la valeur LHM par la source WDDM
             // (identique au Gestionnaire des tâches Windows)
@@ -245,6 +249,45 @@ public sealed class HardwareService : IDisposable
             _gpuPdhCounters = null;
             Logger.Warn("LHM", $"GPU PDH indisponible (fallback LHM) : {ex.Message}");
         }
+    }
+
+    // Ajoute les nouvelles instances PDH engtype_3D et retire celles des processus arrêtés.
+    // Appelé toutes les 5s pour suivre les lancements/arrêts de jeux.
+    private void RefreshGpuPdh()
+    {
+        if (_gpuPdhCounters == null) return;
+        try
+        {
+            var cat       = new PerformanceCounterCategory("GPU Engine");
+            var liveNames = cat.GetInstanceNames()
+                .Where(n => n.Contains("engtype_3D", StringComparison.OrdinalIgnoreCase))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var tracked = _gpuPdhCounters
+                .Select(c => c.InstanceName)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            // Nouvelles instances
+            foreach (var name in liveNames.Except(tracked, StringComparer.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var nc = new PerformanceCounter("GPU Engine", "Utilization Percentage", name, true);
+                    nc.NextValue(); // initialisation — valeur ignorée (toujours 0)
+                    _gpuPdhCounters.Add(nc);
+                    Logger.Debug("LHM", $"GPU PDH : +instance {name}");
+                }
+                catch { }
+            }
+
+            // Instances mortes (processus arrêtés)
+            _gpuPdhCounters.RemoveAll(c => {
+                if (liveNames.Contains(c.InstanceName)) return false;
+                try { c.Dispose(); } catch { }
+                return true;
+            });
+        }
+        catch { }
     }
 
     // Retourne la charge GPU 3D via PDH — correspondance Task Manager.

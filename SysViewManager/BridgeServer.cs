@@ -73,7 +73,7 @@ public sealed class BridgeServer
         builder.Services.AddRateLimiter(opt =>
         {
             opt.AddFixedWindowLimiter("api", o => {
-                o.PermitLimit    = 350;
+                o.PermitLimit    = 900;   // 3 moniteurs × ~240 req/min = 720 max
                 o.Window         = TimeSpan.FromMinutes(1);
                 o.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
                 o.QueueLimit     = 0;
