@@ -29,9 +29,11 @@ jobs:
       contents: write   # requis pour créer le release GitHub
 
     steps:
-      # ── Checkout ────────────────────────────────────────────────────────────
+      # ── Checkout branche SysViewManager (source C#) ─────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: SysViewManager
 
       # ── Setup .NET 8 ─────────────────────────────────────────────────────────
       - name: Setup .NET 8
