@@ -144,8 +144,11 @@
         .replace(/\s*[|–—]\s*(Disney\+|Netflix|Prime Video|Amazon|Hulu|Max|YouTube|YouTube Music|Spotify|Deezer|Tidal|SoundCloud|Crunchyroll|Twitch|Vimeo|Dailymotion|Peacock|Paramount\+|Apple TV\+|Plex|Emby|Jellyfin|Canal\+|TF1\+|ARTE|France\.tv|MUBI)\s*$/i, '')
         .trim() || document.title;
     }
-    // Rejeter les titres qui sont juste le nom de la plateforme
+    // Rejeter les titres qui sont juste le nom de la plateforme (ex: "Netflix", "Prime Video : …")
     if (title && _GENERIC.test(title)) title = '';
+    // Si aucun titre disponible : utiliser le nom du service comme placeholder
+    // (évite un état vide → MediaState efface tout quand title === '')
+    if (!title) title = service || host;
 
     var msg = {
       type:     'media',
