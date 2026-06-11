@@ -146,9 +146,30 @@
     }
     // Rejeter les titres qui sont juste le nom de la plateforme (ex: "Netflix", "Prime Video : …")
     if (title && _GENERIC.test(title)) title = '';
+    // Extraction DOM spécifique par service (Netflix, Prime Video…)
+    if (!title) {
+      if (/netflix\.com/.test(host)) {
+        var ne = document.querySelector('[data-uia="video-title"]')
+              || document.querySelector('[data-uia="episode-title"]')
+              || document.querySelector('.video-title h4')
+              || document.querySelector('[data-uia="player-title"]');
+        if (ne) title = ne.textContent.trim();
+      } else if (/amazon\.com|primevideo\.com/.test(host)) {
+        var pe = document.querySelector('.atvwebplayersdk-title-text')
+              || document.querySelector('[data-automation-id="title"]')
+              || document.querySelector('[class*="title-text"]');
+        if (pe) title = pe.textContent.trim();
+      }
+    }
     // Si aucun titre disponible : utiliser le nom du service comme placeholder
     // (évite un état vide → MediaState efface tout quand title === '')
     if (!title) title = service || host;
+
+    // Fallback image : video.poster (exposé par certains lecteurs comme Prime Video)
+    if (!artwork && video && video.poster &&
+        !video.poster.startsWith('blob:') && !video.poster.startsWith('data:')) {
+      artwork = video.poster;
+    }
 
     var msg = {
       type:     'media',
