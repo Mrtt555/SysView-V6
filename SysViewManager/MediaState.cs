@@ -37,7 +37,6 @@ public sealed class MediaState
 
             bool titleChanged   = _snap.Title   != title;
             bool playingChanged = _snap.Playing  != playing;
-            bool positionJumped = titleChanged || Math.Abs(_snap.Position - position) > 1.5;
 
             string platform  = !string.IsNullOrEmpty(service) ? service : host;
             string mediaType = service is "YouTube" ? "youtube"
@@ -46,6 +45,9 @@ public sealed class MediaState
                              : !string.IsNullOrEmpty(service) ? "video"
                              : "video";
 
+            // LastUpdate : ancre pour l'interpolation dans GET /v1/media.
+            // Toujours mis à jour quand playing=true → elapsed ≤ ~500ms (intervalle du poll).
+            // Mis à 0 quand paused → GET ne fait pas d'interpolation (vérifie m.Playing && m.LastUpdate > 0).
             _snap = new Snapshot
             {
                 Title      = title,
@@ -57,7 +59,7 @@ public sealed class MediaState
                 Position   = position,
                 Duration   = duration,
                 ThumbUrl   = artworkUrl,
-                LastUpdate = positionJumped ? now : _snap.LastUpdate,
+                LastUpdate = playing ? now : 0.0,
             };
 
             if (titleChanged)
