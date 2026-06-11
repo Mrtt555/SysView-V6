@@ -97,6 +97,20 @@
     return src;
   }
 
+  // Cherche la plus grande image DOM correspondant au sélecteur CSS
+  // (CDN Netflix / Amazon) — fallback quand mediaSession n'expose pas d'artwork
+  function _bestDomImg(sel) {
+    var imgs = document.querySelectorAll(sel);
+    var best = null, bestArea = 0;
+    for (var i = 0; i < imgs.length; i++) {
+      var im = imgs[i];
+      if (!im.src || im.src.startsWith('data:') || im.src.startsWith('blob:')) continue;
+      var area = (im.naturalWidth || im.width || 0) * (im.naturalHeight || im.height || 0);
+      if (area > bestArea) { bestArea = area; best = im; }
+    }
+    return best ? best.src : '';
+  }
+
   // ── Données mediaSession reçues depuis content-main.js ─────
   // detail est une string JSON (les objets ne traversent pas la frontière
   // MAIN→ISOLATED de façon fiable — le primitif string passe toujours).
@@ -150,25 +164,46 @@
     if (!title) {
       if (/netflix\.com/.test(host)) {
         var ne = document.querySelector('[data-uia="video-title"]')
-              || document.querySelector('[data-uia="episode-title"]')
-              || document.querySelector('.video-title h4')
-              || document.querySelector('[data-uia="player-title"]');
-        if (ne) title = ne.textContent.trim();
+              || document.querySelector('[data-uia="player-title"]')
+              || document.querySelector('.video-title h4');
+        if (ne) {
+          // L'élément peut contenir plusieurs enfants : [série][épisode]
+          // Joindre avec " · " en nettoyant les espaces multiples
+          var parts = [];
+          var kids = ne.children;
+          if (kids.length > 1) {
+            for (var ki = 0; ki < kids.length; ki++) {
+              var t = kids[ki].textContent.replace(/\s+/g, ' ').trim();
+              if (t) parts.push(t);
+            }
+            title = parts.join(' · ');
+          } else {
+            // Pas d'enfants : nettoyer les doubles espaces → " · "
+            title = ne.textContent.replace(/[ \t]{2,}/g, ' · ').replace(/\s+/g, ' ').trim();
+          }
+        }
       } else if (/amazon\.com|primevideo\.com/.test(host)) {
         var pe = document.querySelector('.atvwebplayersdk-title-text')
-              || document.querySelector('[data-automation-id="title"]')
-              || document.querySelector('[class*="title-text"]');
-        if (pe) title = pe.textContent.trim();
+              || document.querySelector('[data-automation-id="title"]');
+        if (pe) title = pe.textContent.replace(/\s+/g, ' ').trim();
       }
     }
     // Si aucun titre disponible : utiliser le nom du service comme placeholder
     // (évite un état vide → MediaState efface tout quand title === '')
     if (!title) title = service || host;
 
-    // Fallback image : video.poster (exposé par certains lecteurs comme Prime Video)
+    // Fallback image : video.poster (standard HTML5, exposé par certains lecteurs)
     if (!artwork && video && video.poster &&
         !video.poster.startsWith('blob:') && !video.poster.startsWith('data:')) {
       artwork = video.poster;
+    }
+    // Fallback image DOM via CDN (Netflix / Prime Video ne fournissent pas d'artwork via mediaSession)
+    if (!artwork) {
+      if (/netflix\.com/.test(host)) {
+        artwork = _bestDomImg('img[src*="nflximg.net"]') || _bestDomImg('img[src*="nflxvideo.net"]');
+      } else if (/amazon\.com|primevideo\.com/.test(host)) {
+        artwork = _bestDomImg('img[src*="m.media-amazon.com"]');
+      }
     }
 
     var msg = {
