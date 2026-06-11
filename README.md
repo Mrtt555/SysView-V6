@@ -12,7 +12,7 @@ Windows 10 / 11 x64 — Wallpaper Engine requis — aucune dépendance Python
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                       WALLPAPER ENGINE                           │
-│   index.html  (Chromium isolé — accès réseau local autorisé)     │
+│   SysView.html  (Chromium isolé — accès réseau local autorisé)   │
 │   src/  (ES modules : app.js · DataWorker · composants)          │
 │                                                                  │
 │   Horloge · Date · Ville    CPU/GPU/RAM/VRAM    Météo/QAI/Pollen │
@@ -36,22 +36,26 @@ Windows 10 / 11 x64 — Wallpaper Engine requis — aucune dépendance Python
 │  │  Open-Meteo      │  │  DriveInfo (C:→H:)                  │   │
 │  │  direct (HTTPS)  │  └─────────────────────────────────────┘   │
 │  │  → Weather.json  │  ┌─────────────────────────────────────┐   │
-│  └──────────────────┘  │  SmtcService                        │   │
-│  ┌──────────────────┐  │  Windows Media Transport Controls   │   │
-│  │  TmdbService     │  │  Musique · Vidéo · Navigateurs      │   │
-│  │  TMDB poster     │  └─────────────────────────────────────┘   │
-│  │  fallback        │  ┌─────────────────────────────────────┐   │
-│  └──────────────────┘  │  RuntimeConfig                      │   │
-│                        │  runtime_config.json (AppData)      │   │
-│                        └─────────────────────────────────────┘   │
+│  └──────────────────┘  │  MediaState                         │   │
+│  ┌──────────────────┐  │  Source unique : extension navigateur│   │
+│  │  RuntimeConfig   │  └─────────────────────────────────────┘   │
+│  │  AppData JSON    │                                            │
+│  └──────────────────┘                                            │
 └──────────────────────────────────────────────────────────────────┘
          ▲                               ▲
-         │ SMTC (Windows natif)          │ HTTPS (Open-Meteo / TMDB)
-┌────────┴───────────────┐    ┌──────────┴──────────────────────┐
-│  Spotify · YouTube     │    │  api.open-meteo.com             │
-│  VLC · Groove · etc.   │    │  air-quality-api.open-meteo.com │
-│  (tout lecteur Windows)│    │  api.themoviedb.org (posters)   │
-└────────────────────────┘    └─────────────────────────────────┘
+         │ POST /v1/media (500 ms)       │ HTTPS (Open-Meteo)
+┌────────┴───────────────────────┐  ┌───┴─────────────────────────┐
+│  Extension Chrome / Edge       │  │  api.open-meteo.com         │
+│  "SysView Media Bridge" (MV3)  │  │  air-quality-api.open-meteo │
+│  content-main.js  (world MAIN) │  └─────────────────────────────┘
+│    └─ lit navigator.mediaSession
+│  content.js  (world ISOLATED)  │
+│    └─ lit <video> · pousse API │
+│  background.js  (service worker│
+│    └─ relaie vers :5001        │
+└────────────────────────────────┘
+  Netflix · Disney+ · Prime Video
+  YouTube · Spotify · Twitch · etc.
 
 Données persistées : %AppData%\SysViewManager\
   ├── Hardware.json        (maj. 500 ms)
@@ -64,28 +68,30 @@ Données persistées : %AppData%\SysViewManager\
 ## Contenu du projet
 
 ```
-SysView V6/
-├── index.html                    ← Wallpaper principal (point d'entrée WE)
-├── project.json                  ← Propriétés Wallpaper Engine (panneau Personnaliser)
-├── manifest.json                 ← Manifest web (icône, nom)
-├── preview.gif                   ← Aperçu miniature dans la bibliothèque WE
-├── README.md                     ← Ce fichier
+myprojects/
+├── README.md
 │
-├── src/                          ← Source web (ES modules)
-│   ├── app.js                      Orchestrateur Alpine.js · Web Worker · rAF
-│   ├── style.css                   Styles (Tailwind extend + custom)
-│   ├── tailwind.config.js          Config Tailwind (mirroir CDN)
-│   ├── core/
-│   │   ├── DataWorker.js             Web Worker : fetch API · LERP ~30 fps
-│   │   ├── ThemeManager.js           WE property listener · variables CSS
-│   │   └── WallpaperAPI.js           Helpers API Wallpaper Engine
-│   ├── components/
-│   │   ├── MonitoringWidget.js       Rendu CPU/GPU/RAM/VRAM/Réseau
-│   │   ├── MediaWidget.js            Barre média · album art · progression
-│   │   ├── WeatherWidget.js          HTML météo (WMO · QAI · pollen)
-│   │   └── ClockWidget.js            Horloge · date
-│   └── assets/icons/
-│       └── favicon.svg
+├── SysView V6/                   ← Wallpaper (chargé par Wallpaper Engine)
+│   ├── SysView.html                Point d'entrée WE
+│   ├── project.json                Propriétés Wallpaper Engine (panneau Personnaliser)
+│   ├── manifest.json               Manifest web (icône, nom)
+│   ├── preview.gif                 Aperçu miniature dans la bibliothèque WE
+│   │
+│   └── src/                      ← Source web (ES modules)
+│       ├── app.js                    Orchestrateur Alpine.js · Web Worker · rAF
+│       ├── style.css                 Styles (Tailwind extend + custom)
+│       ├── tailwind.config.js        Config Tailwind (mirroir CDN)
+│       ├── core/
+│       │   ├── DataWorker.js           Web Worker : fetch API · LERP ~30 fps
+│       │   ├── ThemeManager.js         WE property listener · variables CSS
+│       │   └── WallpaperAPI.js         Helpers API Wallpaper Engine
+│       ├── components/
+│       │   ├── MonitoringWidget.js     Rendu CPU/GPU/RAM/VRAM/Réseau
+│       │   ├── MediaWidget.js          Barre média · album art · progression
+│       │   ├── WeatherWidget.js        HTML météo (WMO · QAI · pollen)
+│       │   └── ClockWidget.js          Horloge · date
+│       └── assets/icons/
+│           └── favicon.svg
 │
 ├── SysViewManager/               ← Application C# .NET 8 (source)
 │   ├── Program.cs                  Point d'entrée · tâche planifiée · AppData
@@ -93,22 +99,31 @@ SysView V6/
 │   ├── HardwareService.cs          LHM poll 500 ms · export Hardware.json
 │   ├── WeatherService.cs           Open-Meteo direct · export Weather.json
 │   ├── DiskService.cs              Disques via DriveInfo
-│   ├── SmtcService.cs              SMTC natif Windows (tout lecteur)
-│   ├── TmdbService.cs              Fallback pochette via TMDB API
-│   ├── MediaState.cs               État du lecteur média
+│   ├── MediaState.cs               État du lecteur média (source : extension)
 │   ├── Logger.cs                   Journalisation structurée
 │   ├── RuntimeConfig.cs            Config persistée dans AppData
 │   ├── TrayApp.cs                  Icône tray WinForms · toggle auto-start
 │   ├── SysViewManager.csproj
 │   ├── app.manifest                requireAdministrator (LHM)
-│   └── app.ico
+│   ├── app.ico
+│   │
+│   └── browser-ext/              ← Extension Chrome/Edge (MV3)
+│       ├── manifest.json             Déclaration extension (permissions, scripts)
+│       ├── background.js             Service worker : reçoit et relaie vers :5001
+│       ├── content-main.js           World MAIN : lit navigator.mediaSession
+│       ├── content.js                World ISOLATED : lit <video> · envoie message
+│       ├── setup-ext.ps1             Script d'installation de l'extension
+│       └── icons/                    Icônes 16 · 48 · 128 px
+│
+├── SysViewManager.exe            ← Binaire compilé (prêt à l'emploi)
 │
 ├── installer/
 │   └── setup.iss                 ← Installeur Inno Setup (SysViewV6_Setup.exe)
 │
 ├── scripts/
 │   ├── publish.ps1               ← Build Release + signature de code
-│   └── compile.bat               ← Raccourci : lance publish.ps1 -Kill -Version
+│   ├── compile.bat               ← Raccourci : lance publish.ps1 -Kill -Version
+│   └── version.txt               ← Version courante
 │
 └── .github/workflows/
     └── release.yml               ← CI/CD : build + GitHub Release automatique
@@ -131,6 +146,7 @@ SysView V6/
 | **C** | Téléchargement de `SysViewManager.exe` (pré-compilé GitHub Releases) |
 | **D** | Écriture de `runtime_config.json` dans `%AppData%\SysViewManager\` |
 | **E** | Tâche planifiée ONLOGON / HIGHEST + lancement immédiat |
+| **F** | Installation de l'extension **SysView Media Bridge** dans Chrome/Edge |
 
 > Le dossier Wallpaper Engine est détecté automatiquement depuis le registre Steam.  
 > Si aucun release GitHub n'est disponible, l'installeur compile depuis les sources (nécessite .NET 8 SDK, ~2 min).
@@ -146,6 +162,7 @@ SysView V6/
    ```
    Ou double-cliquer **`scripts\compile.bat`** (ajuster la version dans le fichier).
 3. Lancer `SysViewManager.exe` **en tant qu'administrateur** — il crée automatiquement sa tâche planifiée au premier lancement
+4. Installer l'extension navigateur manuellement (voir section ci-dessous)
 
 ---
 
@@ -177,6 +194,7 @@ Ouvrir : [http://127.0.0.1:5001/v1/status](http://127.0.0.1:5001/v1/status)
 |-------|----------------|
 | `modules.lhm` | `"ok"` — LHM actif (capteurs admin requis) |
 | `modules.weather` | `"ok"` — première météo chargée (peut être `"pending"` les premières secondes) |
+| `endpoints.media` | `"idle"` au repos · titre + service quand un lecteur est actif |
 
 ---
 
@@ -186,21 +204,41 @@ Ouvrir : [http://127.0.0.1:5001/v1/status](http://127.0.0.1:5001/v1/status)
 
 ---
 
-## Médias via SMTC
+## Médias via extension navigateur
 
-SysView V6 utilise **Windows Media Transport Controls (SMTC)** — l'API média native de Windows — pour afficher le titre, l'artiste et la miniature du contenu en cours de lecture, **sans extension navigateur**.
+SysView V6 utilise l'extension **SysView Media Bridge** (Chrome/Edge, MV3) pour afficher le titre, l'artiste, la miniature et la progression du contenu en cours de lecture dans le navigateur.
 
-Tout lecteur qui expose ses métadonnées à Windows est supporté :
+### Comment ça fonctionne
 
-| Application | Support |
-|-------------|---------|
-| Spotify | ✅ Titre · artiste · pochette |
-| YouTube Music (PWA) | ✅ Titre · artiste · pochette |
-| VLC · Groove Music | ✅ Titre · artiste |
-| Navigateurs (Chrome/Edge) | ✅ Via l'API `MediaSession` HTML5 |
-| Films & TV Windows | ✅ |
+| Script | World | Rôle |
+|--------|-------|------|
+| `content-main.js` | **MAIN** | Lit `navigator.mediaSession.metadata` + état de lecture |
+| `content.js` | **ISOLATED** | Lit l'élément `<video>` (position, durée) · envoie vers le service worker |
+| `background.js` | Service Worker | Relaie les données vers `POST /v1/media` (127.0.0.1:5001) |
 
-> **Fallback pochette :** si SMTC ne fournit pas d'image, SysViewManager interroge l'API TMDB pour récupérer le poster correspondant.
+> Les deux scripts `content` coexistent sur chaque onglet. Le monde MAIN accède aux objets JavaScript de la page (mediaSession) ; le monde ISOLATED accède au DOM et à l'API Chrome.
+
+### Services supportés
+
+| Plateforme | Titre | Artiste | Image | Position |
+|------------|-------|---------|-------|----------|
+| Netflix | ✅ DOM | — | ✅ CDN | ✅ |
+| Disney+ | ✅ mediaSession | — | ✅ mediaSession | ✅ |
+| Prime Video | ✅ DOM | — | ✅ CDN | ✅ |
+| YouTube | ✅ mediaSession | ✅ | ✅ | ✅ |
+| Spotify Web | ✅ mediaSession | ✅ | ✅ | ✅ |
+| Twitch | ✅ mediaSession | ✅ | ✅ | ✅ |
+| Crunchyroll | ✅ mediaSession | — | ✅ | ✅ |
+| Tout lecteur HTML5 | ✅ document.title | — | — | ✅ |
+
+> **DRM (Netflix, Disney+, Prime Video)** : la durée de la vidéo peut être masquée par le DRM. La position est toujours disponible via `video.currentTime`.
+
+### Installation manuelle de l'extension
+
+1. Ouvrir Chrome/Edge → `chrome://extensions` (ou `edge://extensions`)
+2. Activer le **mode développeur**
+3. Cliquer **Charger l'extension non empaquetée**
+4. Sélectionner le dossier `SysViewManager/browser-ext/`
 
 ---
 
@@ -217,6 +255,7 @@ Tous les endpoints sont servis sur `http://127.0.0.1:5001`.
 | GET | `/v1/models` | Liste des modèles météo disponibles |
 | GET | `/v1/status` | Diagnostic complet (modules · endpoints) |
 | POST | `/v1/config` | Configuration (ville · modèle météo · interface réseau · intervalle) |
+| POST | `/v1/media` | Réception des données de l'extension navigateur |
 
 **Rate limiting :** 350 req/min sur les endpoints de poll · 60 req/min sur `/v1/status` et `/v1/config`.
 
@@ -228,7 +267,7 @@ Tous les endpoints sont servis sur `http://127.0.0.1:5001`.
 
 ```json
 {
-  "timestamp": "2026-06-10T12:00:00Z",
+  "timestamp": "2026-06-11T12:00:00Z",
   "lhm_online": true,
   "cpu":  { "name": "AMD Ryzen 9 7900X", "usage": 12.4, "temp": 52.1 },
   "gpu":  { "name": "NVIDIA RTX 4080",   "usage": 8.0,  "temp": 45.0,
@@ -249,7 +288,7 @@ Tous les endpoints sont servis sur `http://127.0.0.1:5001`.
 
 ```json
 {
-  "timestamp":          "2026-06-10T12:00:00Z",
+  "timestamp":          "2026-06-11T12:00:00Z",
   "temp":               18.4,
   "feels_like":         16.9,
   "humidity":           72,
@@ -400,8 +439,10 @@ Planificateur de tâches → SysViewManager
 | Météo jamais chargée | Vérifier la connexion Internet · tester `https://api.open-meteo.com/v1/forecast?latitude=48.85&longitude=2.35&current=temperature_2m` |
 | Ville non reconnue | Saisir le nom seul sans code pays (`Paris` pas `Paris, FR`) |
 | Réseau toujours à 0 | LHM hors ligne — fallback `NetworkInterface` actif — vérifier `Hardware.json` |
-| Panneau média vide | Vérifier que le lecteur expose ses métadonnées Windows (SMTC) · tester via Spotify ou Groove Music |
-| RAM / VRAM affichent `— Go` | Normal sans bridge — SysViewManager non démarré |
+| Panneau média vide | Vérifier que l'extension est installée et activée · ouvrir une page de lecture · vérifier `endpoints.media` dans `/v1/status` |
+| Titre/image incorrects | Certaines plateformes nécessitent un moment de lecture (mediaSession peuplé après lecture) |
+| Extension sans effet | Vérifier que le mode développeur est activé dans `chrome://extensions` et que le service worker est actif |
+| RAM / VRAM affichent `— Go` | SysViewManager non démarré |
 | Wallpaper ne reçoit aucune donnée | WE → Paramètres → Général → activer *"Autoriser l'accès réseau aux wallpapers web"* |
 | Port 5001 déjà occupé | Tray → ✕ Quitter · tuer le processus occupant 5001 · relancer |
 | Plusieurs icônes tray | Un mutex bloque la 2e instance — vérifier le Gestionnaire des tâches |
@@ -417,8 +458,7 @@ Planificateur de tâches → SysViewManager
 | Application | C# .NET 8 · WinForms (`ApplicationContext`) · Single-file self-contained |
 | Bridge HTTP | ASP.NET Core Minimal API · Kestrel `127.0.0.1:5001` |
 | Capteurs matériel | **LibreHardwareMonitor 0.9.6** (`IVisitor · IHardware · ISensor`) |
-| Média natif | **SMTC** (`Windows.Media.Control`) — tout lecteur Windows |
-| Pochette fallback | **TMDB API** — recherche par titre/artiste |
+| Média | **Extension navigateur** (MV3) via `POST /v1/media` |
 | Météo | **Open-Meteo** (Forecast · Air Quality · Geocoding) — 3 appels `Task.WhenAll` |
 | Modèle météo auto | France bbox → `meteofrance_arome_france`, sinon `best_match` |
 | Config persistée | `System.Text.Json` · `%AppData%\SysViewManager\runtime_config.json` |
@@ -427,7 +467,19 @@ Planificateur de tâches → SysViewManager
 | CORS | `null` (WE renderer) · `127.0.0.1` |
 | Rate limiting | `Microsoft.AspNetCore.RateLimiting` — 350/min poll · 60/min config |
 
-### Front-end (index.html + src/)
+### Extension navigateur (SysView Media Bridge)
+
+| Composant | Technologie |
+|-----------|-------------|
+| Standard | Chrome MV3 (Manifest V3) |
+| `content-main.js` | World **MAIN** — `navigator.mediaSession` · `CustomEvent` JSON |
+| `content.js` | World **ISOLATED** — `<video>` poll 500 ms · `chrome.runtime.sendMessage` |
+| `background.js` | Service Worker — `fetch POST /v1/media` |
+| Sélection vidéo | `readyState ≥ 1` · tri par `currentTime` puis résolution puis durée |
+| Titre fallback | `document.title` → DOM service-specific → nom du service |
+| Image fallback | `video.poster` → CDN DOM (`nflximg`, `m.media-amazon.com`) → CSS bg |
+
+### Front-end (SysView.html + src/)
 
 | Technologie | Usage |
 |-------------|-------|
@@ -455,5 +507,5 @@ L'installeur `SysViewV6_Setup.exe` télécharge cet exe directement depuis le Re
 
 ---
 
-*SysView V6 — Windows 10 / 11 x64*  
+*SysView V6 — Windows 10 / 11 x64 — v1.0.0*  
 *[github.com/Mrtt555/SysView-V6](https://github.com/Mrtt555/SysView-V6)*

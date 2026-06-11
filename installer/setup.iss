@@ -26,7 +26,7 @@
 ; =========================================================
 
 #define AppName       "SysView V6"
-#define AppVersion    "1.0"
+#define AppVersion    "1.0.0"
 #define AppURL        "https://github.com/Mrtt555/SysView-V6"
 #define CloneURL      "https://github.com/Mrtt555/SysView-V6.git"
 #define ReleaseExeURL "https://github.com/Mrtt555/SysView-V6/releases/latest/download/SysViewManager.exe"
