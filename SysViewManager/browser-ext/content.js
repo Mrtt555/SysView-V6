@@ -97,8 +97,7 @@
     return src;
   }
 
-  // Cherche la plus grande image DOM correspondant au sélecteur CSS
-  // (CDN Netflix / Amazon) — fallback quand mediaSession n'expose pas d'artwork
+  // Cherche la plus grande <img> DOM matching un sélecteur
   function _bestDomImg(sel) {
     var imgs = document.querySelectorAll(sel);
     var best = null, bestArea = 0;
@@ -109,6 +108,45 @@
       if (area > bestArea) { bestArea = area; best = im; }
     }
     return best ? best.src : '';
+  }
+
+  // Extrait l'URL depuis background-image CSS d'un élément
+  function _cssBgImg(sel) {
+    var el = document.querySelector(sel);
+    if (!el) return '';
+    var bg = window.getComputedStyle(el).backgroundImage || '';
+    var m  = bg.match(/url\(["']?([^"')]+)["']?\)/);
+    var u  = m ? m[1] : '';
+    return (u && !u.startsWith('data:') && !u.startsWith('blob:')) ? u : '';
+  }
+
+  // Cherche une image Netflix : img CDN → background-image player → scan global
+  function _netflixImg() {
+    // 1. <img> sur tous les sous-domaines nflx*
+    var url = _bestDomImg('img[src*="nflximg"]') || _bestDomImg('img[src*="nflx"]');
+    if (url) return url;
+    // 2. background-image sur les éléments connus du player Netflix
+    var nfEls = [
+      '[data-uia="player-poster"]', '[data-uia="previewModal--boxArt"]',
+      '[data-uia="mini-modal-image"]', '.nf-player-container',
+      '.watch-video--player-view', '.NFPlayer',
+    ];
+    for (var i = 0; i < nfEls.length; i++) {
+      url = _cssBgImg(nfEls[i]);
+      if (url) return url;
+    }
+    // 3. Scan tous les éléments avec un background-image contenant "nflx"
+    var all = document.querySelectorAll('[style*="nflx"]');
+    for (var j = 0; j < all.length; j++) {
+      url = _cssBgImg('#' + (all[j].id || '__no__'));
+      if (!url) {
+        var bg = (all[j].style && all[j].style.backgroundImage) || '';
+        var m  = bg.match(/url\(["']?([^"')]+)["']?\)/);
+        url = m ? m[1] : '';
+      }
+      if (url && !url.startsWith('data:') && !url.startsWith('blob:')) return url;
+    }
+    return '';
   }
 
   // ── Données mediaSession reçues depuis content-main.js ─────
@@ -197,10 +235,10 @@
         !video.poster.startsWith('blob:') && !video.poster.startsWith('data:')) {
       artwork = video.poster;
     }
-    // Fallback image DOM via CDN (Netflix / Prime Video ne fournissent pas d'artwork via mediaSession)
+    // Fallback image DOM (Netflix / Prime Video n'exposent pas d'artwork via mediaSession)
     if (!artwork) {
       if (/netflix\.com/.test(host)) {
-        artwork = _bestDomImg('img[src*="nflximg.net"]') || _bestDomImg('img[src*="nflxvideo.net"]');
+        artwork = _netflixImg();
       } else if (/amazon\.com|primevideo\.com/.test(host)) {
         artwork = _bestDomImg('img[src*="m.media-amazon.com"]');
       }
