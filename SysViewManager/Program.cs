@@ -52,19 +52,10 @@ static class Program
 
         // ── Démarrage automatique (tâche planifiée admin) ─────────────────────
         Logger.Info("Program", "Vérification du démarrage automatique (schtasks)...");
-        bool autoStartOk = IsAutoStartRegistered();
-        if (!autoStartOk)
-        {
-            Logger.Info("Program", "Tâche planifiée absente — création...");
-            EnsureAutoStart();
-            Logger.Info("Program", IsAutoStartRegistered()
-                ? "Tâche planifiée créée avec succès"
-                : "Tâche planifiée : création échouée (droits insuffisants ?)");
-        }
-        else
-        {
-            Logger.Info("Program", "Tâche planifiée SysViewManager : OK");
-        }
+        EnsureAutoStart();
+        Logger.Info("Program", IsAutoStartRegistered()
+            ? "Tâche planifiée SysViewManager : OK"
+            : "Tâche planifiée : création échouée (droits insuffisants ?)");
 
         // ── Services ──────────────────────────────────────────────────────────
         Logger.Info("Program", "Initialisation des services...");
@@ -110,11 +101,16 @@ static class Program
     {
         try
         {
-            // Vérifier si la tâche existe déjà
+            var exe = Environment.ProcessPath
+                      ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
+                      ?? "";
+            if (string.IsNullOrEmpty(exe)) return;
+
+            // Vérifier si la tâche existe avec le bon chemin
             using var check = new System.Diagnostics.Process
             {
                 StartInfo = new System.Diagnostics.ProcessStartInfo("schtasks.exe",
-                    "/query /tn \"SysViewManager\"")
+                    "/query /tn \"SysViewManager\" /fo LIST /v")
                 {
                     RedirectStandardOutput = true,
                     RedirectStandardError  = true,
@@ -123,8 +119,15 @@ static class Program
                 }
             };
             check.Start();
+            var output = check.StandardOutput.ReadToEnd();
             check.WaitForExit(5000);
-            if (check.ExitCode == 0) return;  // déjà enregistrée
+
+            if (check.ExitCode == 0 && output.Contains(exe, StringComparison.OrdinalIgnoreCase))
+                return;  // tâche existante avec chemin correct
+
+            // Tâche absente ou chemin obsolète → (re)créer
+            if (check.ExitCode == 0)
+                Logger.Info("Program", $"Tâche planifiée : chemin obsolète — mise à jour vers {exe}");
 
             RegisterAutoStart();
         }
