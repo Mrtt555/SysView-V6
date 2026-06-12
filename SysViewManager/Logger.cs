@@ -27,7 +27,7 @@ public static class Logger
     private const int  KEEP_DAYS   = 14;
     private const int  SRC_WIDTH   = 11;   // largeur du champ Source (pour l'alignement)
 
-    private static readonly string[] LEVEL_TAG = { "DBG", "INF", "WRN", "ERR" };
+    private static readonly string[] LEVEL_TAG = { "DEBUG", "INFO ", "WARN ", "ERROR" };
 
     // ─── État interne ─────────────────────────────────────────────────────────
 
