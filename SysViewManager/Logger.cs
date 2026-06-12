@@ -26,6 +26,8 @@ public static class Logger
 
     private const int  KEEP_DAYS   = 14;
     private const int  SRC_WIDTH   = 11;   // largeur du champ Source (pour l'alignement)
+    private const long MAX_BYTES   = 512 * 1024;   // 512 Ko — taille max du fichier jour
+    private const long TRIM_BYTES  = 256 * 1024;   // garder les 256 Ko les plus récents
 
     private static readonly string[] LEVEL_TAG = { "DEBUG", "INFO ", "WARN ", "ERROR" };
 
@@ -104,12 +106,36 @@ public static class Logger
 
             lock (_mu)
             {
-                File.AppendAllText(dayFile,    line, System.Text.Encoding.UTF8);
+                File.AppendAllText(dayFile, line, System.Text.Encoding.UTF8);
+                if (new FileInfo(dayFile).Length > MAX_BYTES)
+                    TrimFile(dayFile, TRIM_BYTES);
                 if (level == Level.Error)
                     File.AppendAllText(_errorFile, line, System.Text.Encoding.UTF8);
             }
         }
         catch { /* ne jamais faire planter l'app à cause des logs */ }
+    }
+
+    // Tronque le fichier en ne gardant que les `keepBytes` octets les plus récents,
+    // en coupant proprement sur un saut de ligne.
+    private static void TrimFile(string path, long keepBytes)
+    {
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.Read);
+            if (fs.Length <= keepBytes) return;
+            fs.Seek(-keepBytes, SeekOrigin.End);
+            // Avancer jusqu'au prochain \n pour ne pas couper une ligne à mi-chemin
+            while (fs.ReadByte() is int b and not -1 and not '\n') { }
+            long start     = fs.Position;
+            long remaining = fs.Length - start;
+            var  buf       = new byte[remaining];
+            fs.Read(buf, 0, buf.Length);
+            fs.Seek(0, SeekOrigin.Begin);
+            fs.Write(buf, 0, buf.Length);
+            fs.SetLength(remaining);
+        }
+        catch { }
     }
 
     private static string FormatException(Exception? ex, int depth = 0)
