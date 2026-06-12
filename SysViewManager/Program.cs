@@ -22,6 +22,12 @@ static class Program
         ApplicationConfiguration.Initialize();
         Application.SetHighDpiMode(HighDpiMode.SystemAware);
 
+        // ── Handlers d'exception globaux (diagnostic crash) ───────────────────
+        Application.ThreadException += (_, e) =>
+            Logger.Error("Program", "Exception non gérée (thread UI) — arrêt imminent", e.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            Logger.Error("Program", $"Exception fatale CLR: {e.ExceptionObject}");
+
         // ── Dossier de données ────────────────────────────────────────────────
         Directory.CreateDirectory(AppDataDir);
         var logsDir = Path.Combine(AppDataDir, "logs");

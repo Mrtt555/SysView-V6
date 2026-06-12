@@ -4,6 +4,7 @@
 // Toggle démarrage automatique via tâche planifiée (admin).
 // =============================================================
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace SysViewManager;
@@ -204,6 +205,9 @@ public sealed class TrayApp : ApplicationContext
 
     // ─── Icône tray (cercle coloré généré en mémoire) ─────────────────────────
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool DestroyIcon(IntPtr hIcon);
+
     private static Icon MakeTrayIcon(Color fill)
     {
         using var bmp = new Bitmap(16, 16);
@@ -216,7 +220,11 @@ public sealed class TrayApp : ApplicationContext
             using var pen = new Pen(Color.FromArgb(80, 0, 0, 0), 1f);
             g.DrawEllipse(pen, 1, 1, 13, 13);
         }
-        return Icon.FromHandle(bmp.GetHicon());
+        // GetHicon() alloue un HICON GDI que Icon.FromHandle() ne possède pas.
+        // Clone() crée un Icon autonome ; DestroyIcon libère le handle d'origine.
+        IntPtr hicon = bmp.GetHicon();
+        try   { return (Icon)Icon.FromHandle(hicon).Clone(); }
+        finally { DestroyIcon(hicon); }
     }
 
     protected override void Dispose(bool disposing)
