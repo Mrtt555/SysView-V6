@@ -116,7 +116,7 @@ public sealed class BridgeServer
             var count  = System.Threading.Interlocked.Increment(ref _totalRequests);
 
             // Chemins à haute fréquence → DEBUG seulement
-            bool highFreq = path is "/v1/perf" or "/v1/weather" or "/v1/media";
+            bool highFreq = path is "/v1/perf" or "/v1/weather" or "/v1/media" or "/v1/media/ext";
             if (highFreq)
                 Logger.Debug("HTTP", $"{method} {path} → {status} ({ms}ms)  [#{count}]");
             else
