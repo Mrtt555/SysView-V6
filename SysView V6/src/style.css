@@ -19,6 +19,7 @@
   --op:   0.55;        /* Opacité globale                     */
   --sz:   1;           /* Échelle UI  (100% = 1)              */
   --ff:   'Inter', 'Segoe UI', system-ui, sans-serif; /* Police */
+  --fs:   1;           /* Échelle police (indépendant du scale UI)  */
 
   /* Dérivées — recalculées par JS à chaque changement d'opacité */
   --op-hi:     0.220;  /* gradient panel haut  (op×0.40)  */
@@ -37,7 +38,7 @@ html, body {
   background: rgb(var(--bg));
   color: rgb(var(--tx));
   font-family: var(--ff);
-  font-size: 14px;
+  font-size: calc(14px * var(--fs));
   -webkit-font-smoothing: antialiased;
 }
 
@@ -89,7 +90,7 @@ html, body {
 
 /* ─── TITRE DE PANNEAU ───────────────────────────────────── */
 .ptitle {
-  font-size: calc(11px * var(--sz));
+  font-size: calc(11px * var(--sz) * var(--fs));
   letter-spacing: calc(3px * var(--sz));
   color: rgba(var(--s), 0.82);
   text-transform: uppercase;
@@ -126,20 +127,20 @@ html, body {
 
 /* ─── HORLOGE ────────────────────────────────────────────── */
 .clock-val {
-  font-size: calc(88px * var(--sz));
+  font-size: calc(88px * var(--sz) * var(--fs));
   font-weight: 800; color: #fff;
   letter-spacing: calc(2px * var(--sz)); line-height: 1;
   text-shadow: 0 0 60px rgba(var(--p), 0.20), 0 2px 4px rgba(0,0,0,0.5);
 }
 .clock-date {
-  font-size: calc(14px * var(--sz));
+  font-size: calc(14px * var(--sz) * var(--fs));
   color: rgba(var(--tx), .56);
   letter-spacing: calc(4px * var(--sz));
   margin-top: calc(10px * var(--sz));
   text-transform: uppercase;
 }
 .clock-loc {
-  font-size: calc(12px * var(--sz));
+  font-size: calc(12px * var(--sz) * var(--fs));
   color: rgba(var(--s), .68);
   letter-spacing: calc(3px * var(--sz));
   margin-top: calc(3px * var(--sz));
@@ -148,13 +149,13 @@ html, body {
 
 /* ─── LABELS MONITORING ──────────────────────────────────── */
 .hw-label {
-  font-size: calc(10px * var(--sz));
+  font-size: calc(10px * var(--sz) * var(--fs));
   letter-spacing: calc(2.5px * var(--sz));
   color: rgba(var(--s), .75);
   text-transform: uppercase; font-weight: 600;
 }
 .hw-device {
-  font-size: calc(12px * var(--sz));
+  font-size: calc(12px * var(--sz) * var(--fs));
   color: rgba(var(--tx), .58);
   margin-top: calc(1px * var(--sz));
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -173,13 +174,13 @@ html, body {
 
 /* ─── STATS TEMPÉRATURE / POURCENTAGE ───────────────────── */
 .stat-temp {
-  font-size: calc(13px * var(--sz)); font-weight: 600;
+  font-size: calc(13px * var(--sz) * var(--fs)); font-weight: 600;
   color: rgba(var(--tx), .80);
   font-family: 'Courier New', monospace;
   transition: color .4s;
 }
 .stat-pct {
-  font-size: calc(16px * var(--sz)); font-weight: 700;
+  font-size: calc(16px * var(--sz) * var(--fs)); font-weight: 700;
   color: rgb(var(--s));
   font-family: 'Courier New', monospace;
   transition: color .4s;
@@ -214,13 +215,13 @@ html, body {
   margin-top: calc(3px * var(--sz));
 }
 .memval {
-  font-size: calc(22px * var(--sz)); font-weight: 700;
+  font-size: calc(22px * var(--sz) * var(--fs)); font-weight: 700;
   font-family: 'Courier New', monospace;
 }
-.dval { font-size: calc(18px * var(--sz)) !important; }
-.memunit { font-size: calc(12px * var(--sz)); color: rgba(var(--tx), .50); }
-.memtot  { font-size: calc(12px * var(--sz)); color: rgba(var(--tx), .38); }
-.disk-free { font-size: calc(11px * var(--sz)); color: rgba(var(--tx), .36); }
+.dval { font-size: calc(18px * var(--sz) * var(--fs)) !important; }
+.memunit { font-size: calc(12px * var(--sz) * var(--fs)); color: rgba(var(--tx), .50); }
+.memtot  { font-size: calc(12px * var(--sz) * var(--fs)); color: rgba(var(--tx), .38); }
+.disk-free { font-size: calc(11px * var(--sz) * var(--fs)); color: rgba(var(--tx), .36); }
 
 /* ─── RÉSEAU ─────────────────────────────────────────────── */
 /* Grille partagée DL+UL : les deux barres ont la même largeur */
@@ -233,17 +234,17 @@ html, body {
   margin-top: calc(4px * var(--sz));
 }
 .netlabel {
-  font-size: calc(10px * var(--sz));
+  font-size: calc(10px * var(--sz) * var(--fs));
   color: rgba(var(--s), .68); letter-spacing: calc(1.5px * var(--sz));
   text-transform: uppercase;
   white-space: nowrap;
 }
 .netval {
-  font-size: calc(14px * var(--sz)); font-weight: 700;
+  font-size: calc(14px * var(--sz) * var(--fs)); font-weight: 700;
   color: rgb(var(--s)); text-align: right;
   font-family: 'Courier New', monospace;
 }
-.netunit { font-size: calc(11px * var(--sz)); color: rgba(var(--tx),.44); font-weight: normal; }
+.netunit { font-size: calc(11px * var(--sz) * var(--fs)); color: rgba(var(--tx),.44); font-weight: normal; }
 
 /* ─── MÉTÉO ──────────────────────────────────────────────── */
 .wmain { display: flex; align-items: center; gap: calc(14px * var(--sz)); }
@@ -257,10 +258,10 @@ html, body {
   display: flex; align-items: center; justify-content: center; overflow: hidden;
 }
 .wicon svg, .wicon img { width: 76%; height: 76%; display: block; }
-.wtemp { font-size: calc(50px * var(--sz)); font-weight: 800; color: #fff; line-height: 1; }
-.wtemp-unit { font-size: calc(18px * var(--sz)); color: rgba(var(--tx), .48); }
+.wtemp { font-size: calc(50px * var(--sz) * var(--fs)); font-weight: 800; color: #fff; line-height: 1; }
+.wtemp-unit { font-size: calc(18px * var(--sz) * var(--fs)); color: rgba(var(--tx), .48); }
 .wcond {
-  font-size: calc(11px * var(--sz)); color: rgba(var(--s), .88);
+  font-size: calc(11px * var(--sz) * var(--fs)); color: rgba(var(--s), .88);
   letter-spacing: calc(2px * var(--sz)); margin-top: calc(3px * var(--sz));
   text-transform: uppercase; font-weight: 600;
 }
@@ -281,14 +282,14 @@ html, body {
   box-shadow: 0 0 8px rgba(var(--p),.08), inset 0 1px 0 rgba(var(--s),.16);
 }
 .wcard-title {
-  font-size: calc(10px * var(--sz)); color: rgba(var(--s), .78);
+  font-size: calc(10px * var(--sz) * var(--fs)); color: rgba(var(--s), .78);
   letter-spacing: calc(2px * var(--sz)); margin-bottom: calc(5px * var(--sz));
   text-transform: uppercase; font-weight: 600;
 }
-.wcard-val  { font-size: calc(26px * var(--sz)); font-weight: 700; line-height: 1; }
-.wcard-lbl  { font-size: calc(12px * var(--sz)); margin-top: calc(4px * var(--sz)); font-weight: 600; }
+.wcard-val  { font-size: calc(26px * var(--sz) * var(--fs)); font-weight: 700; line-height: 1; }
+.wcard-lbl  { font-size: calc(12px * var(--sz) * var(--fs)); margin-top: calc(4px * var(--sz)); font-weight: 600; }
 .wsource {
-  font-size: calc(10px * var(--sz)); color: rgba(var(--s), .70);
+  font-size: calc(10px * var(--sz) * var(--fs)); color: rgba(var(--s), .70);
   letter-spacing: calc(2px * var(--sz)); text-transform: uppercase;
   margin-top: calc(8px * var(--sz)); text-align: center;
   background: rgba(var(--p), .10); border: 1px solid rgba(var(--s), .20);
@@ -359,23 +360,23 @@ html, body {
 .nm-b3 { height: 38px; animation: nm1 1.0s ease-in-out infinite .05s; }
 .nm-b4 { height: 28px; animation: nm1 1.3s ease-in-out infinite .15s; }
 .nm-b5 { height: 18px; animation: nm1 1.2s ease-in-out infinite .3s; }
-.nm-note { font-size: 10px; color: rgba(var(--s),.40); letter-spacing: 3px; white-space: nowrap; }
+.nm-note { font-size: calc(10px * var(--fs)); color: rgba(var(--s),.40); letter-spacing: 3px; white-space: nowrap; }
 @keyframes nm1 { 0%,100% { transform: scaleY(.18); } 50% { transform: scaleY(1); } }
 
 .minfo { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
 .mlabel {
-  font-size: calc(10px * var(--sz)); letter-spacing: calc(3px * var(--sz));
+  font-size: calc(10px * var(--sz) * var(--fs)); letter-spacing: calc(3px * var(--sz));
   color: rgba(var(--s), .60); margin-bottom: calc(5px * var(--sz));
   text-transform: uppercase; font-weight: 600;
 }
 .mtitle {
   font-weight: 700; color: #fff; line-height: 1.25;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
-  overflow: hidden; font-size: calc(22px * var(--sz));
+  overflow: hidden; font-size: calc(22px * var(--sz) * var(--fs));
   max-height: calc(54px * var(--sz)); word-break: break-word;
 }
 .martist {
-  font-size: calc(14px * var(--sz)); color: rgba(var(--tx), .60);
+  font-size: calc(14px * var(--sz) * var(--fs)); color: rgba(var(--tx), .60);
   margin-top: calc(3px * var(--sz));
 }
 .mprog { margin-top: calc(8px * var(--sz)); }
@@ -391,7 +392,7 @@ html, body {
 .progtime {
   display: flex; justify-content: space-between;
   margin-top: calc(4px * var(--sz));
-  font-size: calc(12px * var(--sz)); color: rgba(var(--tx), .48);
+  font-size: calc(12px * var(--sz) * var(--fs)); color: rgba(var(--tx), .48);
   font-family: 'Courier New', monospace;
 }
 

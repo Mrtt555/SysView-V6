@@ -135,6 +135,10 @@ export class ThemeManager {
     if (p.ui_scale !== undefined)
       r.style.setProperty('--sz', (p.ui_scale.value / 100).toFixed(3));
 
+    // ── Échelle police ────────────────────────────────────────
+    if (p.font_scale !== undefined)
+      r.style.setProperty('--fs', (p.font_scale.value / 100).toFixed(3));
+
     // ── Offset barre des tâches ───────────────────────────────
     if (p.taskbar_offset !== undefined) {
       var mp = document.getElementById('media-panel');

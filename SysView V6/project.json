@@ -168,6 +168,16 @@
 				"type" : "text",
 				"value" : ""
 			},
+			"font_scale" :
+			{
+				"index" : 54,
+				"max" : 200,
+				"min" : 50,
+				"order" : 1024,
+				"text" : "Taille de la police (50=petite, 100=normale, 200=double)",
+				"type" : "slider",
+				"value" : 100
+			},
 			"font_family" :
 			{
 				"index" : 47,
