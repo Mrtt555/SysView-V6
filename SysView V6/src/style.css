@@ -18,6 +18,7 @@
   --tx:   210,200,230; /* Texte                               */
   --op:   0.55;        /* Opacité globale                     */
   --sz:   1;           /* Échelle UI  (100% = 1)              */
+  --ff:   'Inter', 'Segoe UI', system-ui, sans-serif; /* Police */
 
   /* Dérivées — recalculées par JS à chaque changement d'opacité */
   --op-hi:     0.220;  /* gradient panel haut  (op×0.40)  */
@@ -35,7 +36,7 @@ html, body {
   overflow: hidden;
   background: rgb(var(--bg));
   color: rgb(var(--tx));
-  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--ff);
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
 }

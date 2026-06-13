@@ -119,7 +119,6 @@ export class ThemeManager {
       }
       var ff = fontStack[fk] || fontStack.inter;
       r.style.setProperty('--ff', ff);
-      document.documentElement.style.fontFamily = ff;
     }
 
     // ── Opacité globale ───────────────────────────────────────
