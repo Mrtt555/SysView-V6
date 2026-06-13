@@ -100,6 +100,51 @@ public sealed class WeatherService : IDisposable
         _cfg      = cfg;
         _dataDir  = dataDir;
         Logger.Info("Weather", $"Service initialisé (dataDir={dataDir})");
+
+        // Restaure les dernières données connues pour affichage immédiat au boot
+        if (!string.IsNullOrEmpty(_dataDir))
+        {
+            var cachedPath = Path.Combine(_dataDir, "Weather.json");
+            if (File.Exists(cachedPath))
+            {
+                try
+                {
+                    var jn = JsonNode.Parse(File.ReadAllText(cachedPath));
+                    if (jn != null)
+                    {
+                        _data = new WeatherData
+                        {
+                            Temp        = N<double>(jn["temp"]),
+                            FeelsLike   = N<double>(jn["feels_like"]),
+                            Humidity    = N<double>(jn["humidity"]),
+                            Uv          = N<double>(jn["uv"]),
+                            Precip      = N<double>(jn["precip"]),
+                            PrecipProb  = NInt(jn["precip_prob"]),
+                            Wind        = N<double>(jn["wind"]),
+                            WindGusts   = N<double>(jn["wind_gusts"]),
+                            WindDir     = NInt(jn["wind_dir"]),
+                            WeatherCode = NInt(jn["weather_code"]),
+                            CloudCover  = NInt(jn["cloud_cover"]),
+                            Aqi         = NInt(jn["aqi"]),
+                            AqiLabel    = jn["aqi_label"]?.GetValue<string>()    ?? "—",
+                            Pollen      = N<double>(jn["pollen"]),
+                            PollenLabel = jn["pollen_label"]?.GetValue<string>() ?? "—",
+                            Pm10        = NInt(jn["pm10"]),
+                            Pm25        = NInt(jn["pm25"]),
+                            AetherModel    = jn["weather_model_name"]?.GetValue<string>(),
+                            WeatherModelId = jn["weather_model"]?.GetValue<string>(),
+                            ForecastJson   = jn["forecast"]?.ToJsonString(),
+                        };
+                        Logger.Info("Weather", $"Cache restauré depuis Weather.json (ts={jn["timestamp"]?.GetValue<string>() ?? "?"})");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn("Weather", $"Lecture Weather.json ignorée : {ex.Message}");
+                }
+            }
+        }
+
         Logger.Info("Weather", $"Délai initial avant 1er fetch : 3 s");
         _loopTask = Task.Run(LoopAsync);
     }
