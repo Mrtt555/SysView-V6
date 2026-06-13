@@ -64,10 +64,8 @@ public sealed class MediaState
 
             if (titleChanged)
                 Logger.Info("Media", $"{(playing ? "▶" : "⏸")} \"{title}\" [{platform}]");
-            else if (playingChanged)
-                Logger.Info("Media", $"{(playing ? "▶ lecture" : "⏸ pause")} — \"{title}\"");
             else
-                Logger.Debug("Media", $"position — {position}s / {duration}s  [{platform}]");
+                Logger.Debug("Media", $"{(playing ? "▶" : "⏸")} position={position}s dur={duration}s [{platform}]");
         }
     }
 
