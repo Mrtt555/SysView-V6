@@ -79,11 +79,11 @@ myprojects/
 │   │
 │   └── src/                      ← Source web (ES modules)
 │       ├── app.js                    Orchestrateur Alpine.js · Web Worker · rAF
-│       ├── style.css                 Styles (Tailwind extend + custom)
+│       ├── style.css                 Styles (variables CSS · font · scale)
 │       ├── tailwind.config.js        Config Tailwind (mirroir CDN)
 │       ├── core/
 │       │   ├── DataWorker.js           Web Worker : fetch API · LERP ~30 fps
-│       │   ├── ThemeManager.js         WE property listener · variables CSS
+│       │   ├── ThemeManager.js         WE property listener · variables CSS · polices
 │       │   └── WallpaperAPI.js         Helpers API Wallpaper Engine
 │       ├── components/
 │       │   ├── MonitoringWidget.js     Rendu CPU/GPU/RAM/VRAM/Réseau
@@ -100,7 +100,7 @@ myprojects/
 │   ├── WeatherService.cs           Open-Meteo direct · export Weather.json
 │   ├── DiskService.cs              Disques via DriveInfo
 │   ├── MediaState.cs               État du lecteur média (source : extension)
-│   ├── Logger.cs                   Journalisation structurée
+│   ├── Logger.cs                   Journalisation structurée (512 Ko max)
 │   ├── RuntimeConfig.cs            Config persistée dans AppData
 │   ├── TrayApp.cs                  Icône tray WinForms · toggle auto-start
 │   ├── SysViewManager.csproj
@@ -122,11 +122,11 @@ myprojects/
 │
 ├── scripts/
 │   ├── publish.ps1               ← Build Release + signature de code
-│   ├── compile.bat               ← Raccourci : lance publish.ps1 -Kill -Version
+│   ├── compile.bat               ← Incrément version · build · git tag · push
 │   └── version.txt               ← Version courante
 │
 └── .github/workflows/
-    └── release.yml               ← CI/CD : build + GitHub Release automatique
+    └── release.yml               ← CI/CD : build + Inno Setup + GitHub Release
 ```
 
 ---
@@ -146,7 +146,7 @@ myprojects/
 | **C** | Téléchargement de `SysViewManager.exe` (pré-compilé GitHub Releases) |
 | **D** | Écriture de `runtime_config.json` dans `%AppData%\SysViewManager\` |
 | **E** | Tâche planifiée ONLOGON / HIGHEST + lancement immédiat |
-| **F** | Installation de l'extension **SysView Media Bridge** dans Chrome/Edge |
+| **F** | Installation de l'extension **SysView Media Bridge** dans Chrome/Edge/Brave |
 
 > Le dossier Wallpaper Engine est détecté automatiquement depuis le registre Steam.  
 > Si aucun release GitHub n'est disponible, l'installeur compile depuis les sources (nécessite .NET 8 SDK, ~2 min).
@@ -160,7 +160,7 @@ myprojects/
    ```
    dotnet publish SysViewManager/SysViewManager.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none
    ```
-   Ou double-cliquer **`scripts\compile.bat`** (ajuster la version dans le fichier).
+   Ou double-cliquer **`scripts\compile.bat`** (incrémente automatiquement la version, build, commit, tag et push).
 3. Lancer `SysViewManager.exe` **en tant qu'administrateur** — il crée automatiquement sa tâche planifiée au premier lancement
 4. Installer l'extension navigateur manuellement (voir section ci-dessous)
 
@@ -206,7 +206,7 @@ Ouvrir : [http://127.0.0.1:5001/v1/status](http://127.0.0.1:5001/v1/status)
 
 ## Médias via extension navigateur
 
-SysView V6 utilise l'extension **SysView Media Bridge** (Chrome/Edge, MV3) pour afficher le titre, l'artiste, la miniature et la progression du contenu en cours de lecture dans le navigateur.
+SysView V6 utilise l'extension **SysView Media Bridge** (Chrome/Edge/Brave, MV3) pour afficher le titre, l'artiste, la miniature et la progression du contenu en cours de lecture dans le navigateur.
 
 ### Comment ça fonctionne
 
@@ -235,7 +235,7 @@ SysView V6 utilise l'extension **SysView Media Bridge** (Chrome/Edge, MV3) pour 
 
 ### Installation manuelle de l'extension
 
-1. Ouvrir Chrome/Edge → `chrome://extensions` (ou `edge://extensions`)
+1. Ouvrir Chrome/Edge/Brave → `chrome://extensions`
 2. Activer le **mode développeur**
 3. Cliquer **Charger l'extension non empaquetée**
 4. Sélectionner le dossier `SysViewManager/browser-ext/`
@@ -267,7 +267,7 @@ Tous les endpoints sont servis sur `http://127.0.0.1:5001`.
 
 ```json
 {
-  "timestamp": "2026-06-11T12:00:00Z",
+  "timestamp": "2026-06-13T12:00:00Z",
   "lhm_online": true,
   "cpu":  { "name": "AMD Ryzen 9 7900X", "usage": 12.4, "temp": 52.1 },
   "gpu":  { "name": "NVIDIA RTX 4080",   "usage": 8.0,  "temp": 45.0,
@@ -279,7 +279,7 @@ Tous les endpoints sont servis sur `http://127.0.0.1:5001`.
     "eth_dl_kb":   0.0,   "eth_ul_kb":  0.0
   },
   "disks": {
-    "c": { "used_gb": 312.5, "total_gb": 953.9, "free_gb": 641.4, "percent": 32.8 }
+    "c": { "used_gb": 312.5, "total_gb": 954.0, "free_gb": 641.5, "percent": 32.8 }
   }
 }
 ```
@@ -288,7 +288,7 @@ Tous les endpoints sont servis sur `http://127.0.0.1:5001`.
 
 ```json
 {
-  "timestamp":          "2026-06-11T12:00:00Z",
+  "timestamp":          "2026-06-13T12:00:00Z",
   "temp":               18.4,
   "feels_like":         16.9,
   "humidity":           72,
@@ -371,6 +371,42 @@ SysViewManager apparaît dans la barre système avec un cercle coloré :
 
 Dans le panneau **Personnaliser** de Wallpaper Engine :
 
+### Affichage & Style
+
+| Paramètre | Description |
+|-----------|-------------|
+| **Language** | FR / EN |
+| **Background image or video** | Fichier JPG/PNG/GIF/WEBP/MP4/WEBM optionnel |
+| **UI Scale** | Échelle globale de l'interface (50–250 %, défaut 180) |
+| **Police d'affichage** | Famille de police — 22 choix répartis en 3 catégories (voir ci-dessous) |
+| **Taille de la police** | Échelle du texte uniquement, indépendante du Scale UI (50–200 %, défaut 100) |
+| **Accent / Secondary / Background / Text color** | Thème couleur complet |
+| **Opacity** | Opacité des panneaux (0–100) |
+| **Clock format** | 24h ou 12h AM/PM |
+| **Show temperature decimal** | Ex : 15,6 °C au lieu de 16 °C |
+| **Bottom bar height** | Marge au-dessus de la barre des tâches Windows (px) |
+
+#### Polices disponibles
+
+| Catégorie | Polices |
+|-----------|---------|
+| **Sans-serif** | Inter *(défaut)* · Segoe UI · Roboto · DM Sans · Barlow · Nunito |
+| **Tech / Futuriste** | Rajdhani · Exo 2 · Oxanium · Orbitron · Titillium Web · Space Grotesk · Quantico · Chakra Petch |
+| **Monospace** | JetBrains Mono · Roboto Mono · Source Code Pro · Space Mono · Share Tech Mono · Consolas |
+
+> Les polices Google Fonts sont chargées dynamiquement au premier changement (connexion Internet requise pour les polices non-système). Segoe UI et Consolas sont des polices système Windows — aucun téléchargement nécessaire.
+
+#### Couleurs des barres de progression
+
+| Paramètre | Affecte |
+|-----------|---------|
+| **Barre — CPU + GPU** | Barres d'utilisation CPU et GPU |
+| **Barre — RAM** | Barre RAM |
+| **Barre — VRAM** | Barre VRAM |
+| **Barre — Download** | Barre réseau téléchargement |
+| **Barre — Upload** | Barre réseau envoi |
+| **Barre — Stockage** | Barres disques |
+
 ### Localisation & Météo
 
 | Paramètre | Description |
@@ -379,25 +415,15 @@ Dans le panneau **Personnaliser** de Wallpaper Engine :
 | **City name** | Nom de la ville — géocodée automatiquement (lat/lon sauvegardés) |
 | **Weather refresh interval** | Intervalle de rafraîchissement 1–15 min |
 | **Temperature unit** | °C ou °F |
+| **Show city and country** | Afficher la ville sous l'horloge et dans la météo |
 | **Show weather source badge** | Afficher/masquer le badge Open-Meteo |
-
-### Affichage
-
-| Paramètre | Description |
-|-----------|-------------|
-| **Language** | FR / EN |
-| **Background image** | Image JPG/PNG/GIF/WEBP optionnelle |
-| **UI Scale** | Échelle globale de l'interface |
-| **Accent / Secondary / Background / Text color** | Thème couleur |
-| **Clock format** | 24h ou 12h |
-| **Show temperature decimal** | Ex : 15,6 °C au lieu de 16 °C |
-| **Bottom bar height** | Marge au-dessus de la barre des tâches Windows |
 
 ### Panneaux
 
 | Paramètre | Description |
 |-----------|-------------|
 | **Show Monitoring panel** | CPU / GPU / RAM / VRAM / Réseau |
+| **Show CPU / GPU / RAM / VRAM / Network block** | Activer/désactiver chaque bloc individuellement |
 | **Network interface** | Auto · Wi-Fi · Ethernet |
 | **Show Storage panel** | Disques C: → H: |
 | **Show free space on disks** | Espace libre restant |
@@ -408,8 +434,8 @@ Dans le panneau **Personnaliser** de Wallpaper Engine :
 
 | Capteur | Warning (orange) | Critical (rouge) |
 |---------|-----------------|-----------------|
-| CPU | 80 °C | 91 °C |
-| GPU | 80 °C | 95 °C |
+| CPU | 80 °C *(défaut)* | 91 °C *(défaut)* |
+| GPU | 80 °C *(défaut)* | 95 °C *(défaut)* |
 
 ---
 
@@ -442,10 +468,12 @@ Planificateur de tâches → SysViewManager
 | Panneau média vide | Vérifier que l'extension est installée et activée · ouvrir une page de lecture · vérifier `endpoints.media` dans `/v1/status` |
 | Titre/image incorrects | Certaines plateformes nécessitent un moment de lecture (mediaSession peuplé après lecture) |
 | Extension sans effet | Vérifier que le mode développeur est activé dans `chrome://extensions` et que le service worker est actif |
+| Police non appliquée | Si une police Google Fonts ne s'affiche pas, vérifier la connexion Internet — Segoe UI ou Consolas fonctionnent hors ligne |
 | RAM / VRAM affichent `— Go` | SysViewManager non démarré |
 | Wallpaper ne reçoit aucune donnée | WE → Paramètres → Général → activer *"Autoriser l'accès réseau aux wallpapers web"* |
 | Port 5001 déjà occupé | Tray → ✕ Quitter · tuer le processus occupant 5001 · relancer |
 | Plusieurs icônes tray | Un mutex bloque la 2e instance — vérifier le Gestionnaire des tâches |
+| Géocodage échoue (setup) | Vérifier la connexion Internet au moment de l'installation — les coordonnées par défaut (Halluin) sont utilisées en fallback |
 
 ---
 
@@ -466,6 +494,7 @@ Planificateur de tâches → SysViewManager
 | Exports JSON | `Hardware.json` (500 ms) · `Weather.json` (intervalle configurable) |
 | CORS | `null` (WE renderer) · `127.0.0.1` |
 | Rate limiting | `Microsoft.AspNetCore.RateLimiting` — 350/min poll · 60/min config |
+| Journalisation | Rotation automatique à 512 Ko · niveaux DEBUG/INFO/WARN/ERROR |
 
 ### Extension navigateur (SysView Media Bridge)
 
@@ -484,28 +513,120 @@ Planificateur de tâches → SysViewManager
 | Technologie | Usage |
 |-------------|-------|
 | ES Modules (`type="module"`) | Architecture `src/core/` + `src/components/` |
-| **Alpine.js v3** | État réactif (show/hide · labels · météo · média) |
+| **Alpine.js v3.14.3** | État réactif (show/hide · labels · météo · média) — version épinglée |
 | **Tailwind CSS v3 CDN** | Classes utilitaires · thème via CSS custom properties |
 | **Web Worker** (`DataWorker.js`) | Fetch API + LERP ~30 fps dans thread séparé |
 | `requestAnimationFrame` | Rendu DOM haute fréquence (barres · températures) |
-| CSS Custom Properties | `--p --s --bg --tx` modifiées en temps réel par WE |
+| CSS Custom Properties | `--p --s --bg --tx --ff --fs --sz` modifiées en temps réel par WE |
 | `wallpaperPropertyListener` | API WE — reçoit les changements utilisateur |
 | `wallpaperRegisterAudioListener` | API WE — 128 bins audio (~30 fps) → visualiseur |
 | LERP exponentiel | `f = 1 - exp(-k·dt)` dans le Worker · lissage CPU/GPU/RAM/Réseau |
+| Polices dynamiques | Chargement Google Fonts à la demande via `<link>` injecté |
 
 ---
 
 ## CI/CD
 
-Le workflow `.github/workflows/release.yml` se déclenche sur un tag `vX.Y.Z` :
+Le workflow `.github/workflows/release.yml` se déclenche sur un push de tag `vX.Y.Z` :
 
 1. Checkout sur `windows-latest`
-2. `dotnet publish` — `win-x64 · self-contained · PublishSingleFile`
-3. Publication automatique du **GitHub Release** avec `SysViewManager.exe` en pièce jointe
+2. `dotnet publish` — `win-x64 · self-contained · PublishSingleFile` → `SysViewManager.exe`
+3. `choco install innosetup` → compilation de `installer/setup.iss` → `SysViewV6_Setup.exe`
+4. Publication automatique du **GitHub Release** avec les **deux fichiers** en pièces jointes
 
-L'installeur `SysViewV6_Setup.exe` télécharge cet exe directement depuis le Release — **il n'est pas nécessaire de cloner le dépôt pour l'utiliser**.
+```
+compile.bat
+  └─ incrémente version · build local · git tag · push
+        └─ GitHub Actions (~5 min)
+              ├─ SysViewManager.exe  (dotnet publish win-x64)
+              ├─ SysViewV6_Setup.exe (Inno Setup)
+              └─ GitHub Release publié
+```
+
+> `compile.bat` gère automatiquement le rollover de version : patch ≥ 10 → incrémente le minor et remet le patch à 0 (ex : 6.5.9 → 6.6.0).
 
 ---
 
-*SysView V6 — Windows 10 / 11 x64 — v1.0.0*  
+## Améliorations techniques (v6.6.x)
+
+### Stabilité C# — SysViewManager
+
+| Zone | Correctif |
+|------|-----------|
+| `BridgeServer` | CORS `null` restauré — requis pour le renderer CEF de Wallpaper Engine |
+| `BridgeServer` | Guard `ContentLength` corrigé pour les POST chunked |
+| `BridgeServer` | `GetBool()` protégé contre les valeurs JSON non-string |
+| `BridgeServer` | Lecture `StreamReader` avec `using` — pas de fuite de ressource |
+| `HardwareService` | Vérification du retour de `Join()` avant `_hw.Close()` — évite la data race LHM |
+| `HardwareService` | Détection Intel Arc par nom (type `GpuIntel` insuffisant pour discret) |
+| `WeatherService` | `Task.WhenAll` — vérifie `IsCompletedSuccessfully` avant `.Result` |
+| `WeatherService` | Helper `NInt()` pour les champs entiers encodés en float JSON (`180.0`) |
+| `WeatherService` | `Task.Delay` initial utilise le `CancellationToken` |
+| `WeatherService` | Guard null sur latitude/longitude dans `GeocodeAsync` |
+| `TrayApp` | `_popupOpen` reset dans le `catch` du `Task.Run` — pas de blocage permanent |
+| `TrayApp` | `_titleFont` disposé dans `Dispose()` — pas de fuite GDI |
+| `TrayApp` | `Task.Delay` avec `CancellationToken` · continuation `OnlyOnRanToCompletion` |
+| `TrayApp` | `_menuRefreshing` int (Interlocked) — pas de rafraîchissement concurrent |
+| `Program` | Deadlock stdout/stderr — lecture stdout sur thread séparé, stderr non redirigé |
+| `Program` | `using` sur `CancellationTokenSource` et `DiskService` |
+| `RuntimeConfig` | Sérialisation dans le `lock(_mu)` |
+| `RuntimeConfig` | Vérification `JsonValueKind.Number` avant `GetValue<double>()` |
+| `DiskService` | `Math.Ceiling` sur le total — évite "utilisé > total" à l'affichage |
+| `Logger` | Séparateur tronqué à 54 caractères · rotation à 512 Ko |
+
+### Stabilité front-end
+
+| Zone | Correctif |
+|------|-----------|
+| `ThemeManager` | `decodeURIComponent` en try/catch · espaces encodés `%20` dans les URL de fond |
+| `ThemeManager` | Police appliquée via CSS variable `--ff` sur `html, body` (fix précédent ignoré par cascade) |
+| `DataWorker` | `fetchWithTimeout` avec paramètre `opts` optionnel |
+| `MediaWidget` | Détection `Topic` insensible à la casse |
+| `app.js` | `_onLerp` reconstruit les disques depuis zéro — disques éjectés masqués |
+| `SysView.html` | Alpine.js épinglé à `v3.14.3` (évite les breaking changes auto) |
+
+### Installeur (setup.iss)
+
+| Zone | Correctif |
+|------|-----------|
+| `DoGeocode` | Migré vers `ExecPSFile` — les `"` dans les URL cassaient `cmd /c -Command "..."` |
+| `StepConfigAndStart` | Chemin `$env:APPDATA+'\SysViewManager'` sans guillemets — token PowerShell invalide corrigé |
+| `StepInstallExt` | Détection navigateur via `ExecPSFile` — même problème de quoting cmd |
+| `WriteRuntimeConfig` | JSON écrit en UTF-8 via here-string PowerShell — noms de villes accentués préservés |
+
+### Scripts de build
+
+| Fichier | Changement |
+|---------|------------|
+| `compile.bat` | Version rollover : patch ≥ 10 → incrémente minor, remet patch à 0 |
+| `compile.bat` | `git add` explicite (liste de fichiers) — évite de stager des secrets |
+| `compile.bat` | Revert `version.txt` automatique si `git push` échoue |
+| `publish.ps1` | `CloseMainWindow()` gracieux avant `taskkill /F` |
+| `release.yml` | Compilation Inno Setup automatique → `SysViewV6_Setup.exe` joint au release |
+
+---
+
+## Dépannage
+
+| Problème | Solution |
+|----------|----------|
+| `modules.lhm = "offline"` | SysViewManager non lancé en admin — vérifier la tâche planifiée ou relancer manuellement |
+| CPU / GPU / températures à `—` | LHM hors ligne (voir ci-dessus) |
+| `modules.weather = "pending"` | Normal les 3–5 premières secondes — attendre le premier cycle |
+| Météo jamais chargée | Vérifier la connexion Internet · tester `https://api.open-meteo.com/v1/forecast?latitude=48.85&longitude=2.35&current=temperature_2m` |
+| Ville non reconnue | Saisir le nom seul sans code pays (`Paris` pas `Paris, FR`) |
+| Réseau toujours à 0 | LHM hors ligne — fallback `NetworkInterface` actif — vérifier `Hardware.json` |
+| Panneau média vide | Vérifier que l'extension est installée et activée · ouvrir une page de lecture · vérifier `endpoints.media` dans `/v1/status` |
+| Titre/image incorrects | Certaines plateformes nécessitent un moment de lecture (mediaSession peuplé après lecture) |
+| Extension sans effet | Vérifier que le mode développeur est activé dans `chrome://extensions` et que le service worker est actif |
+| Police non appliquée | Si une police Google Fonts ne s'affiche pas, vérifier la connexion Internet — Segoe UI ou Consolas fonctionnent hors ligne |
+| RAM / VRAM affichent `— Go` | SysViewManager non démarré |
+| Wallpaper ne reçoit aucune donnée | WE → Paramètres → Général → activer *"Autoriser l'accès réseau aux wallpapers web"* |
+| Port 5001 déjà occupé | Tray → ✕ Quitter · tuer le processus occupant 5001 · relancer |
+| Plusieurs icônes tray | Un mutex bloque la 2e instance — vérifier le Gestionnaire des tâches |
+| Géocodage échoue (setup) | Vérifier la connexion Internet au moment de l'installation — coordonnées par défaut utilisées en fallback |
+
+---
+
+*SysView V6 — Windows 10 / 11 x64*  
 *[github.com/Mrtt555/SysView-V6](https://github.com/Mrtt555/SysView-V6)*

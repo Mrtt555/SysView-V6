@@ -51,6 +51,21 @@ if exist "!EXE_SRC!" (
 )
 echo.
 
+:: -- 1b. Compilation setup Inno Setup -------------------------
+set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+if exist "!ISCC!" (
+    echo  Compilation SysViewV6_Setup.exe...
+    "!ISCC!" /Q "/DAppVersion=!NEW_VERSION!" "%~dp0..\installer\setup.iss"
+    if !ERRORLEVEL! neq 0 (
+        echo  ATTENTION : Inno Setup a echoue - setup non genere.
+    ) else (
+        echo  SysViewV6_Setup.exe compile -^> installer\Output\
+    )
+) else (
+    echo  Inno Setup absent - setup compile par GitHub Actions lors du release.
+)
+echo.
+
 :: -- 2. Commit + push master -----------------------------------
 echo  [1/2] Commit + push master...
 git add "SysViewManager.exe" "SysView V6\src" "SysView V6\SysView.html" "SysView V6\manifest.json" "SysView V6\project.json" "SysView V6\preview.gif" "SysViewManager" "installer" "scripts" "README.md"
@@ -77,6 +92,9 @@ git push origin "v!NEW_VERSION!"
 echo.
 echo  ================================================
 echo   v!NEW_VERSION! - Release en cours sur GitHub
+echo   GitHub Actions compile et uploade :
+echo     - SysViewManager.exe
+echo     - SysViewV6_Setup.exe
 echo   https://github.com/Mrtt555/SysView-V6/releases
 echo  ================================================
 echo.
