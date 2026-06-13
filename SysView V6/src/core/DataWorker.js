@@ -62,7 +62,7 @@ self.onmessage = function(e) {
       fetchWeather();
       break;
     case 'config_post':
-      fetch(API + '/config', {
+      fetchWithTimeout(API + '/config', 5000, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(m.payload)
@@ -72,10 +72,13 @@ self.onmessage = function(e) {
 };
 
 // ─── Helpers ─────────────────────────────────────────────────
-function withTimeout(ms) {
+// Annule le timer si la requête se termine avant le délai (évite jusqu'à 6 timers simultanés)
+// opts optionnel : fusionné avec { signal } pour les requêtes POST (config_post, etc.)
+function fetchWithTimeout(url, ms, opts) {
   var ac = new AbortController();
-  setTimeout(function() { ac.abort(); }, ms);
-  return ac.signal;
+  var tid = setTimeout(function() { ac.abort(); }, ms);
+  var fetchOpts = Object.assign({}, opts || {}, { signal: ac.signal });
+  return fetch(url, fetchOpts).finally(function() { clearTimeout(tid); });
 }
 
 function notifyBridge(ok) {
@@ -125,7 +128,7 @@ function startLerpLoop() {
 // ─── Fetch loops ─────────────────────────────────────────────
 async function fetchPerf() {
   try {
-    var r = await fetch(API + '/perf', { signal: withTimeout(3000) });
+    var r = await fetchWithTimeout(API + '/perf', 3000);
     if (r.ok) {
       notifyBridge(true);
       var d = await r.json();
@@ -143,9 +146,12 @@ async function fetchPerf() {
       if (d.vram) { _raw.vram = d.vram.used_mb  || 0; _raw.vramTotal = d.vram.total_mb  || 0; }
       if (d.network) { _raw.dl = d.network.download_kb || 0; _raw.ul = d.network.upload_kb || 0; }
       if (d.disks) {
+        // Reconstruire depuis zéro pour retirer les disques éjectés
+        var nd = {};
         ['c','d','e','f','g','h'].forEach(function(l) {
-          if (d.disks[l]) _raw.disks[l] = d.disks[l];
+          if (d.disks[l]) nd[l] = d.disks[l];
         });
+        _raw.disks = nd;
       }
     } else { notifyBridge(false); }
   } catch (_) { notifyBridge(false); }
@@ -154,15 +160,16 @@ async function fetchPerf() {
 
 async function fetchMedia() {
   try {
-    var r = await fetch(API + '/media', { signal: withTimeout(3000) });
+    var r = await fetchWithTimeout(API + '/media', 3000);
     if (r.ok) self.postMessage({ type: 'media', data: await r.json() });
-  } catch (_) {}
+    else notifyBridge(false);
+  } catch (_) { notifyBridge(false); }
   _mediaTid = setTimeout(fetchMedia, MEDIA_MS);
 }
 
 async function fetchWeather() {
   try {
-    var r = await fetch(API + '/weather', { signal: withTimeout(5000) });
+    var r = await fetchWithTimeout(API + '/weather', 5000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     self.postMessage({ type: 'weather', data: await r.json() });
     _weatherRetries = 0;

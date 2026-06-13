@@ -82,7 +82,7 @@ public sealed class DiskService : IDisposable
             FreeGb   = fD,   // valeur dans FreeUnit  (To ou Go)
             UsedUnit = uU, TotalUnit = tU, FreeUnit = fU,
             Percent  = pct,
-            Display  = $"{uD.ToString("F2", IC)}{uU}/{Math.Round(tD, 0).ToString("F0", IC)}{tU}",
+            Display  = $"{uD.ToString("F2", IC)}{uU}/{((long)Math.Ceiling(tD)).ToString(IC)}{tU}",
             Removable= removable,
         };
     }

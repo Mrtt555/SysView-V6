@@ -95,17 +95,27 @@ public sealed class RuntimeConfig
             var json = JsonNode.Parse(File.ReadAllText(_path, System.Text.Encoding.UTF8));
             if (json == null) { Logger.Warn("Config", "Fichier JSON invalide — valeurs par défaut"); return; }
 
-            if (json["lat"]  is JsonNode la) Lat  = la.GetValue<double>();
-            if (json["lon"]  is JsonNode lo) Lon  = lo.GetValue<double>();
+            if (json["lat"]  is JsonNode la && la.GetValueKind() == System.Text.Json.JsonValueKind.Number)
+                Lat = la.GetValue<double>();
+            if (json["lon"]  is JsonNode lo && lo.GetValueKind() == System.Text.Json.JsonValueKind.Number)
+                Lon = lo.GetValue<double>();
             if (json["city"] is JsonNode ci && ci.GetValue<string>() is { Length: > 0 } c)
                 City = c;
             if (json["weather_interval_min"] is JsonNode wi)
-                WeatherIntervalMin = Math.Clamp(wi.GetValue<int>(), 1, 60);
+            {
+                // Tolérer float JSON (ex: 10.0) en plus des entiers stricts
+                int wiv = wi.GetValueKind() == System.Text.Json.JsonValueKind.Number
+                    ? (int)Math.Round(wi.GetValue<double>())
+                    : wi.GetValue<int>();
+                WeatherIntervalMin = Math.Clamp(wiv, 1, 60);
+            }
             if (json["network_iface"] is JsonNode ni)
             {
                 var v = ni.GetValue<string>();
                 if (v is "auto" or "eth" or "wifi") NetworkIface = v;
             }
+            if (json["lhm_enabled"] is JsonNode le)
+                LhmEnabled = le.GetValue<bool>();
             if (json["weather_model"] is JsonNode wm)
             {
                 var v = wm.GetValue<string>();
@@ -126,23 +136,25 @@ public sealed class RuntimeConfig
     {
         try
         {
-            double lat; double lon; string city; int intv; string iface; string model;
+            string json;
+            // Sérialisation + écriture fichier dans le même lock pour éviter
+            // les écritures simultanées en cas d'appels concurrents à Update().
             lock (_mu)
             {
-                lat   = Lat; lon = Lon; city = City;
-                intv  = WeatherIntervalMin; iface = NetworkIface; model = WeatherModel;
+                var opts = new JsonSerializerOptions { WriteIndented = true };
+                var obj  = new
+                {
+                    lat                  = Lat,
+                    lon                  = Lon,
+                    city                 = City,
+                    weather_interval_min = WeatherIntervalMin,
+                    network_iface        = NetworkIface,
+                    weather_model        = WeatherModel,
+                    lhm_enabled          = LhmEnabled,
+                };
+                json = JsonSerializer.Serialize(obj, opts);
             }
-            var opts = new JsonSerializerOptions { WriteIndented = true };
-            var obj  = new
-            {
-                lat,
-                lon,
-                city,
-                weather_interval_min = intv,
-                network_iface        = iface,
-                weather_model        = model,
-            };
-            File.WriteAllText(_path, JsonSerializer.Serialize(obj, opts), System.Text.Encoding.UTF8);
+            File.WriteAllText(_path, json, System.Text.Encoding.UTF8);
             Logger.Debug("Config", $"Sauvegardé → {_path}");
         }
         catch (Exception ex)

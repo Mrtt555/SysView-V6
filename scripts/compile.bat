@@ -10,7 +10,7 @@ set /p OLD_VERSION=<"%VF%"
 set TF=%TEMP%\sysview_newver.tmp
 set VF_ENV=%VF%
 set TF_ENV=%TF%
-powershell -NoProfile -Command "$v=(Get-Content $env:VF_ENV).Trim().Split('.');$v[2]=[string]([int]$v[2]+1);$nv=$v -join '.';Set-Content -NoNewline -Path $env:VF_ENV -Value $nv;Set-Content -NoNewline -Path $env:TF_ENV -Value $nv"
+powershell -NoProfile -Command "$v=(Get-Content $env:VF_ENV).Trim().Split('.');$p=[int]$v[2]+1;if($p -ge 10){$v[1]=[string]([int]$v[1]+1);$v[2]='0'}else{$v[2]=[string]$p};$nv=$v -join '.';Set-Content -NoNewline -Path $env:VF_ENV -Value $nv;Set-Content -NoNewline -Path $env:TF_ENV -Value $nv"
 set /p NEW_VERSION=<"%TF%"
 del "%TF%" >nul 2>nul
 
@@ -53,12 +53,13 @@ echo.
 
 :: -- 2. Commit + push master -----------------------------------
 echo  [1/2] Commit + push master...
-git add -A
+git add "SysViewManager.exe" "SysView V6\src" "SysView V6\SysView.html" "SysView V6\manifest.json" "SysView V6\project.json" "SysView V6\preview.gif" "SysViewManager" "installer" "scripts" "README.md"
 git commit -m "build: v!NEW_VERSION!"
 git push origin master
 
 if %ERRORLEVEL% neq 0 (
-    echo  ERREUR git push master.
+    echo  ERREUR git push master - remise version a v!OLD_VERSION!
+    echo !OLD_VERSION!>"%VF%"
     pause & exit /b 1
 )
 

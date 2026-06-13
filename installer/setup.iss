@@ -204,6 +204,19 @@ begin
   Result := (RC = 0);
 end;
 
+// Execute un script PowerShell via fichier .ps1 temp (evite les pb de guillemets cmd)
+// Utiliser quand PSCmd contient des guillemets doubles (JSON, URLs, etc.)
+function ExecPSFile(const PSContent: String): Boolean;
+var PSFile: String; RC: Integer;
+begin
+  PSFile := ExpandConstant('{tmp}\sv_helper.ps1');
+  SaveStringToFile(PSFile, PSContent, False);
+  Exec('powershell.exe',
+    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + PSFile + '"',
+    '', SW_HIDE, ewWaitUntilTerminated, RC);
+  Result := (RC = 0);
+end;
+
 // Cherche un executable dans PATH, retourne son chemin ou ''
 function FindInPath(const ExeName: String): String;
 var RC: Integer; OutFile: String; Lines: TStringList;
@@ -351,10 +364,12 @@ procedure WriteRuntimeConfig;
 var
   AppDataDir : String;
   ConfigPath : String;
-  Json       : String;
+  CityFile   : String;
+  Script     : String;
 begin
   AppDataDir := ExpandConstant('{userappdata}') + '\SysViewManager';
   ConfigPath := AppDataDir + '\runtime_config.json';
+  CityFile   := ExpandConstant('{tmp}\sv_city_cfg.txt');
 
   // Creer le dossier si necessaire (double securite avec ExecPS dans StepStart)
   if not DirExists(AppDataDir) then
@@ -373,17 +388,27 @@ begin
     gCityName := 'HALLUIN';
   end;
 
-  Json :=
+  // Ecrire la ville dans un fichier temp (ANSI -- PowerShell lira avec le meme encodage systeme)
+  SaveStringToFile(CityFile, gCityName, False);
+
+  // Construire le JSON via un script .ps1 pour garantir l'UTF-8 et eviter les pb de quoting cmd.
+  // Le here-string PS (@"..."@) supporte les guillemets et les variables nativement.
+  // La fermeture "@" doit etre en colonne 0 -- les + #13#10 l'y placent.
+  Script :=
+    '$city = [IO.File]::ReadAllText(''' + CityFile + ''').Trim()' + #13#10 +
+    '$json = @"' + #13#10 +
     '{' + #13#10 +
-    '  "lat": '                  + gLatStr    + ',' + #13#10 +
-    '  "lon": '                  + gLonStr    + ',' + #13#10 +
-    '  "city": "'                + gCityName  + '",' + #13#10 +
+    '  "lat": ' + gLatStr + ',' + #13#10 +
+    '  "lon": ' + gLonStr + ',' + #13#10 +
+    '  "city": "$city",' + #13#10 +
     '  "weather_interval_min": 10,' + #13#10 +
     '  "network_iface": "auto",' + #13#10 +
     '  "weather_model": "best_match"' + #13#10 +
-    '}';
+    '}' + #13#10 +
+    '"@' + #13#10 +
+    '[IO.File]::WriteAllText(''' + ConfigPath + ''', $json, [Text.Encoding]::UTF8)';
 
-  SaveStringToFile(ConfigPath, Json, False);
+  ExecPSFile(Script);
   AppendLog('[OK] runtime_config.json -> ' + ConfigPath);
 end;
 
@@ -520,7 +545,7 @@ begin
 
   // ── Fallback : dotnet publish ──────────────────────────────────────────────
   MgrProj := gDest + '\SysViewManager\SysViewManager.csproj';
-  PubExe  := gDest + '\SysViewManager\bin\Release\net8.0-windows\win-x64\publish\SysViewManager.exe';
+  PubExe  := gDest + '\SysViewManager\bin\Release\net8.0-windows10.0.17763.0\win-x64\publish\SysViewManager.exe';
 
   if not FileExists(MgrProj) then begin
     AppendLog('[ERREUR] Projet introuvable : ' + MgrProj);
@@ -1011,7 +1036,13 @@ begin
     WizardForm.NextButton.Enabled := False;
     WizardForm.BackButton.Enabled := False;
     try
-      DoInstall;
+      try
+        DoInstall;
+      except
+        InstallOK := False;
+        if Assigned(InstMemo) then
+          AppendLog('[ERREUR] Exception inattendue : ' + GetExceptionMessage);
+      end;
     finally
       WizardForm.NextButton.Enabled := True;
     end;

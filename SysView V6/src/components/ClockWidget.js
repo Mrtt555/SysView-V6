@@ -28,6 +28,9 @@ export function formatDate(date, days, months) {
 
 // ─── Lance l'horloge (appelle onTick immédiatement puis chaque seconde)
 // onTick({ clock, dateStr }) → utilisé par Alpine pour mettre à jour les props
+// Retourne le setTimeout ID pour pouvoir annuler si besoin.
+// Auto-correction : chaque tick se recale sur le début de la prochaine seconde,
+// évitant la dérive cumulative d'un setInterval fixe.
 export function startClock(getTimeFormat, getDays, getMonths, onTick) {
   function tick() {
     var n = new Date();
@@ -35,7 +38,7 @@ export function startClock(getTimeFormat, getDays, getMonths, onTick) {
       clock:   formatClock(n, getTimeFormat()),
       dateStr: formatDate(n, getDays(), getMonths()),
     });
+    return setTimeout(tick, 1000 - n.getMilliseconds());
   }
-  tick();
-  setInterval(tick, 1000);
+  return tick();
 }

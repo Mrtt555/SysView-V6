@@ -62,8 +62,7 @@ public sealed class BridgeServer
         // ── CORS ──────────────────────────────────────────────────────────────
         builder.Services.AddCors(opts => opts.AddDefaultPolicy(p =>
             p.SetIsOriginAllowed(o =>
-                   o == "null"
-                || o == $"http://127.0.0.1:{PORT}"
+                   o == $"http://127.0.0.1:{PORT}"
                 || o == $"http://localhost:{PORT}"
                 || o.StartsWith("chrome-extension://"))
              .WithMethods("GET", "POST", "OPTIONS")
@@ -99,6 +98,19 @@ public sealed class BridgeServer
         });
 
         var app = builder.Build();
+
+        // ── Middleware 0 : gestion globale des exceptions non catchées ────────
+        app.Use(async (ctx, next) => {
+            try { await next(ctx); }
+            catch (Exception ex) {
+                Logger.Error("Bridge", $"Exception non gérée dans l'endpoint {ctx.Request.Path}", ex);
+                if (!ctx.Response.HasStarted)
+                {
+                    ctx.Response.StatusCode = 500;
+                    await ctx.Response.WriteAsJsonAsync(new { error = "Internal server error" });
+                }
+            }
+        });
 
         // ── Middleware 1 : logging de chaque requête ───────────────────────────
         // GET /v1/perf et /v1/weather : DEBUG (très fréquent — Wallpaper Engine)
@@ -137,7 +149,8 @@ public sealed class BridgeServer
             await next(ctx);
 
             buf.Position = 0;
-            var body = await new StreamReader(buf).ReadToEndAsync();
+            string body;
+            using (var sr = new StreamReader(buf, leaveOpen: true)) { body = await sr.ReadToEndAsync(); }
             ctx.Response.Body = origBody;
 
             if (ctx.Response.ContentType?.StartsWith("application/json") == true)
@@ -275,9 +288,9 @@ public sealed class BridgeServer
             double pos = m.Position;
             if (m.Playing && m.LastUpdate > 0)
             {
-                double elapsed = Math.Min(
+                double elapsed = Math.Max(0, Math.Min(
                     DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0 - m.LastUpdate,
-                    30.0);
+                    30.0));
                 pos = m.Duration > 0
                     ? Math.Min(m.Position + elapsed, m.Duration)
                     : m.Position + elapsed;
@@ -305,6 +318,9 @@ public sealed class BridgeServer
         {
             try
             {
+                if (ctx.Request.ContentLength > 65_536)
+                    return Results.BadRequest(new { error = "Payload trop grand" });
+
                 var json = await JsonNode.ParseAsync(ctx.Request.Body);
                 if (json == null) return Results.BadRequest(new { error = "Corps JSON manquant" });
 
@@ -320,9 +336,9 @@ public sealed class BridgeServer
                 string artist   = json["artist"]?.GetValue<string>()   ?? "";
                 string service  = json["service"]?.GetValue<string>()  ?? "";
                 string host     = json["host"]?.GetValue<string>()     ?? "";
-                bool   playing  = json["playing"]?.GetValue<bool>()    ?? false;
-                int    position = json["position"]?.GetValue<int>()    ?? 0;
-                int    duration = json["duration"]?.GetValue<int>()    ?? 0;
+                bool   playing  = GetBool(json["playing"]);
+                int    position = GetInt(json["position"]);
+                int    duration = GetInt(json["duration"]);
                 string artwork  = json["artwork"]?.GetValue<string>()  ?? "";
 
                 _media.Update(title, artist, service, host, playing, position, duration, artwork);
@@ -405,8 +421,9 @@ public sealed class BridgeServer
 
                 if (d.TryGetProperty("weather_interval_min", out var wi))
                 {
-                    Logger.Info("Bridge", $"  weather_interval_min={wi.GetInt32()}");
-                    _cfg.Update(intervalMin: wi.GetInt32());
+                    int wiVal = (int)Math.Round(wi.GetDouble());
+                    Logger.Info("Bridge", $"  weather_interval_min={wiVal}");
+                    _cfg.Update(intervalMin: wiVal);
                     changed.Add("weather_interval_min");
                     _weather.TriggerRefresh();
                 }
@@ -476,18 +493,42 @@ public sealed class BridgeServer
         Logger.Info("Bridge", "Serveur HTTP arrêté");
     }
 
+    // ─── Helpers parsing JSON tolérant (type coercition extension) ──────────────
+
+    private static bool GetBool(JsonNode? node)
+    {
+        if (node is null) return false;
+        try { return node.GetValue<bool>(); } catch { }
+        if (node.GetValue<string>() is { } s) return s == "true" || s == "1";
+        return false;
+    }
+
+    private static int GetInt(JsonNode? node)
+    {
+        if (node is null) return 0;
+        try { return node.GetValue<int>(); } catch { }
+        try { return (int)node.GetValue<double>(); } catch { }
+        return 0;
+    }
+
     // ─── Page HTML dark-theme pour les navigateurs ────────────────────────────
+
+    private static string HtmlEncode(string s) =>
+        s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;")
+         .Replace("\"", "&quot;").Replace("'", "&#39;");
 
     private static string BrowserHtml(string path, string json)
     {
-        var jsonJs = JsonSerializer.Serialize(json);
+        var jsonJs    = JsonSerializer.Serialize(json);
+        var pathSafe  = HtmlEncode(path);
+        var pathJs    = JsonSerializer.Serialize(path); // JSON-encode pour var cur=
 
         return $$"""
             <!DOCTYPE html>
             <html lang="fr">
             <head>
             <meta charset="UTF-8">
-            <title>SysView Bridge — {{path}}</title>
+            <title>SysView Bridge — {{pathSafe}}</title>
             <style>
             *{box-sizing:border-box;margin:0;padding:0}
             body{background:#0d1117;color:#c9d1d9;font-family:'Consolas','Monaco',monospace;padding:24px;min-height:100vh}
@@ -500,7 +541,7 @@ public sealed class BridgeServer
             </style>
             </head>
             <body>
-            <h1>◈ SysView Bridge &mdash; {{path}}</h1>
+            <h1>◈ SysView Bridge &mdash; {{pathSafe}}</h1>
             <nav>
               <a href="/v1/health">health</a>
               <a href="/v1/status">status</a>
@@ -523,7 +564,7 @@ public sealed class BridgeServer
                 });
               }
               document.getElementById('out').innerHTML=hi(esc(raw));
-              var cur='{{path}}';
+              var cur={{pathJs}};
               document.querySelectorAll('nav a').forEach(function(a){
                 if(a.getAttribute('href')===cur)a.classList.add('cur');
               });

@@ -22,17 +22,17 @@ static class Program
         ApplicationConfiguration.Initialize();
         Application.SetHighDpiMode(HighDpiMode.SystemAware);
 
+        // ── Dossier de données (avant les handlers pour que Logger soit prêt) ─
+        Directory.CreateDirectory(AppDataDir);
+        var logsDir = Path.Combine(AppDataDir, "logs");
+        Directory.CreateDirectory(logsDir);
+        Logger.Init(logsDir);
+
         // ── Handlers d'exception globaux (diagnostic crash) ───────────────────
         Application.ThreadException += (_, e) =>
             Logger.Error("Program", "Exception non gérée (thread UI) — arrêt imminent", e.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             Logger.Error("Program", $"Exception fatale CLR: {e.ExceptionObject}");
-
-        // ── Dossier de données ────────────────────────────────────────────────
-        Directory.CreateDirectory(AppDataDir);
-        var logsDir = Path.Combine(AppDataDir, "logs");
-        Directory.CreateDirectory(logsDir);
-        Logger.Init(logsDir);
 
         // ── En-tête de démarrage ──────────────────────────────────────────────
         Logger.Separator("Program");
@@ -73,7 +73,7 @@ static class Program
         using var hwSvc = new HardwareService(AppDataDir);
 
         Logger.Info("Program", "  [3/4] DiskService...");
-        var diskSvc = new DiskService();
+        using var diskSvc = new DiskService();
 
         Logger.Info("Program", "  [4/4] WeatherService + MediaState...");
         using var weather = new WeatherService(rtCfg, AppDataDir);
@@ -81,7 +81,7 @@ static class Program
 
         // ── Bridge HTTP (ASP.NET Core) sur thread background ─────────────────
         Logger.Info("Program", "BridgeServer : démarrage du serveur HTTP...");
-        var cts    = new CancellationTokenSource();
+        using var cts = new CancellationTokenSource();
         var bridge = new BridgeServer(hwSvc, diskSvc, weather, media, rtCfg);
         var srv    = Task.Run(() => bridge.RunAsync(cts.Token));
 
@@ -119,14 +119,15 @@ static class Program
                     "/query /tn \"SysViewManager\" /fo LIST /v")
                 {
                     RedirectStandardOutput = true,
-                    RedirectStandardError  = true,
                     UseShellExecute  = false,
                     CreateNoWindow   = true,
                 }
             };
             check.Start();
-            var output = check.StandardOutput.ReadToEnd();
+            // Lire stdout sur un thread séparé pour éviter le deadlock si le buffer se remplit
+            var stdoutTask = System.Threading.Tasks.Task.Run(() => check.StandardOutput.ReadToEnd());
             check.WaitForExit(5000);
+            var output = stdoutTask.IsCompleted ? stdoutTask.Result : "";
 
             if (check.ExitCode == 0 && output.Contains(exe, StringComparison.OrdinalIgnoreCase))
                 return;  // tâche existante avec chemin correct
@@ -195,15 +196,13 @@ static class Program
                 StartInfo = new System.Diagnostics.ProcessStartInfo("schtasks.exe",
                     "/query /tn \"SysViewManager\"")
                 {
-                    RedirectStandardOutput = true,
-                    RedirectStandardError  = true,
-                    UseShellExecute  = false,
-                    CreateNoWindow   = true,
+                    UseShellExecute = false,
+                    CreateNoWindow  = true,
                 }
             };
             p.Start();
-            p.WaitForExit(3_000);
-            return p.ExitCode == 0;
+            bool exited = p.WaitForExit(3_000);
+            return exited && p.ExitCode == 0;
         }
         catch { return false; }
     }

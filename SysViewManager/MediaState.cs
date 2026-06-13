@@ -35,8 +35,7 @@ public sealed class MediaState
                 return;
             }
 
-            bool titleChanged   = _snap.Title   != title;
-            bool playingChanged = _snap.Playing  != playing;
+            bool titleChanged = _snap.Title != title;
 
             string platform  = !string.IsNullOrEmpty(service) ? service : host;
             string mediaType = service is "YouTube" ? "youtube"
@@ -48,6 +47,11 @@ public sealed class MediaState
             // LastUpdate : ancre pour l'interpolation dans GET /v1/media.
             // Toujours mis à jour quand playing=true → elapsed ≤ ~500ms (intervalle du poll).
             // Mis à 0 quand paused → GET ne fait pas d'interpolation (vérifie m.Playing && m.LastUpdate > 0).
+            // Sanitize ThumbUrl — n'accepter que http(s) pour éviter data:, javascript:, etc.
+            string safeThumb = artworkUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                            || artworkUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                ? artworkUrl : "";
+
             _snap = new Snapshot
             {
                 Title      = title,
@@ -58,12 +62,14 @@ public sealed class MediaState
                 Playing    = playing,
                 Position   = position,
                 Duration   = duration,
-                ThumbUrl   = artworkUrl,
+                ThumbUrl   = safeThumb,
                 LastUpdate = playing ? now : 0.0,
             };
 
+            // Sanitize pour les logs : remplacer les sauts de ligne (injection de faux log)
+            string logTitle = title.Replace('\n', ' ').Replace('\r', ' ');
             if (titleChanged)
-                Logger.Info("Media", $"{(playing ? "▶" : "⏸")} \"{title}\" [{platform}]");
+                Logger.Info("Media", $"{(playing ? "▶" : "⏸")} \"{logTitle}\" [{platform}]");
             else
                 Logger.Debug("Media", $"{(playing ? "▶" : "⏸")} position={position}s dur={duration}s [{platform}]");
         }

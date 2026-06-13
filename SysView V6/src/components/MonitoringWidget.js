@@ -111,7 +111,7 @@ export function renderDisks(disks, cfg, T, diskCache) {
   ['c','d','e','f','g','h'].forEach(function(letter) {
     var info = disks[letter];
     if (!info || !info.total_gb) return;
-    var pct      = (info.percent || 0).toFixed(1);
+    var pct      = parseFloat(info.percent || 0).toFixed(1);
     var usedTiB  = info.used_unit  === 'To';
     var totalTiB = info.total_unit === 'To';
     var freeTiB  = info.free_unit  === 'To';

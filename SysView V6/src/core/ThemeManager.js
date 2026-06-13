@@ -35,13 +35,20 @@ export class ThemeManager {
 
   // ── Point d'entrée principal ─────────────────────────────────
   apply(p) {
+    try { this._applyInner(p); } catch(e) { console.warn('[ThemeManager] apply error', e); }
+  }
+
+  _applyInner(p) {
     var r  = document.documentElement;
     var sv = this._sv;
 
-    function c(x) { return Math.round(parseFloat(x) * 255); }
     function rgb(prop) {
       var v = prop.value.trim().split(/\s+/);
-      return c(v[0]) + ',' + c(v[1]) + ',' + c(v[2]);
+      // Composants manquants → 0 pour éviter NaN dans les variables CSS
+      var r0 = Math.round((parseFloat(v[0]) || 0) * 255);
+      var g0 = Math.round((parseFloat(v[1]) || 0) * 255);
+      var b0 = Math.round((parseFloat(v[2]) || 0) * 255);
+      return r0 + ',' + g0 + ',' + b0;
     }
 
     // ── Couleurs ──────────────────────────────────────────────
@@ -94,7 +101,8 @@ export class ThemeManager {
     // ── Opacité globale ───────────────────────────────────────
     var opProp = p.Global_Opacity !== undefined ? p.Global_Opacity : p.panel_opacity;
     if (opProp !== undefined) {
-      var op = opProp.value / 100;
+      var op = parseFloat(opProp.value) / 100;
+      if (isNaN(op)) op = 0.55;
       r.style.setProperty('--op', op.toFixed(2));
       if (sv) sv.setOpacity(op);
       else    this.applyOpacity(op);
@@ -178,7 +186,9 @@ export class ThemeManager {
     var bgEl = document.getElementById('bg-image');
     if (!bgEl) return;
     if (bgVal) {
-      var bgPath = decodeURIComponent(bgVal).replace(/\\/g, '/');
+      var decoded;
+      try { decoded = decodeURIComponent(bgVal); } catch(_) { decoded = bgVal; }
+      var bgPath = decoded.replace(/\\/g, '/');
       if (bgPath.match(/^[A-Za-z]:\//)) bgPath = 'file:///' + bgPath;
       if (/\.(mp4|webm|mkv|mov)$/i.test(bgPath)) {
         bgEl.style.backgroundImage = 'none';
@@ -191,7 +201,7 @@ export class ThemeManager {
       } else {
         var ov = bgEl.querySelector('video');
         if (ov) bgEl.removeChild(ov);
-        bgEl.style.backgroundImage = "url('" + bgPath.replace(/'/g, '%27') + "')";
+        bgEl.style.backgroundImage = "url('" + bgPath.replace(/'/g, '%27').replace(/ /g, '%20') + "')";
       }
     } else {
       var ov2 = bgEl.querySelector('video');

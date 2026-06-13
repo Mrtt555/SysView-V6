@@ -83,7 +83,8 @@ public static class Logger
     {
         var line = string.IsNullOrEmpty(label)
             ? new string('─', 60)
-            : $"── {label} " + new string('─', Math.Max(0, 57 - label.Length));
+            : "── " + label.Substring(0, Math.Min(label.Length, 54)) + " "
+              + new string('─', Math.Max(0, 57 - Math.Min(label.Length, 54)));
         Write(Level.Info, src, line);
     }
 
@@ -110,7 +111,11 @@ public static class Logger
                 if (new FileInfo(dayFile).Length > MAX_BYTES)
                     TrimFile(dayFile, TRIM_BYTES);
                 if (level == Level.Error)
+                {
                     File.AppendAllText(_errorFile, line, System.Text.Encoding.UTF8);
+                    if (new FileInfo(_errorFile).Length > MAX_BYTES)
+                        TrimFile(_errorFile, TRIM_BYTES);
+                }
             }
         }
         catch { /* ne jamais faire planter l'app à cause des logs */ }
@@ -130,7 +135,7 @@ public static class Logger
             long start     = fs.Position;
             long remaining = fs.Length - start;
             var  buf       = new byte[remaining];
-            fs.Read(buf, 0, buf.Length);
+            fs.ReadExactly(buf, 0, (int)remaining); // ReadExactly évite la lecture partielle (.NET 7+)
             fs.Seek(0, SeekOrigin.Begin);
             fs.Write(buf, 0, buf.Length);
             fs.SetLength(remaining);

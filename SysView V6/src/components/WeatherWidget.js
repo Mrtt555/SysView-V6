@@ -113,6 +113,11 @@ function fmtTemp(c, unit, decimal) {
 }
 function tempUnit(unit) { return unit === 'f' ? '°F' : '°C'; }
 
+// ── Échappement HTML minimal (évite XSS si une valeur API est malformée) ──
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 // ── Export principal ──────────────────────────────────────────
 export function buildWeatherHtml(d, cfg) {
   if (d.om_temp === null || d.om_temp === undefined) return '';
@@ -121,7 +126,8 @@ export function buildWeatherHtml(d, cfg) {
   var temp = fmtTemp(d.om_temp, cfg.tempUnit, cfg.tempDecimal);
   var tu   = tempUnit(cfg.tempUnit);
   var prec = (d.om_precip_prob != null) ? d.om_precip_prob : '—';
-  var wind = (d.om_wind != null) ? (+d.om_wind).toFixed(1) : '—';
+  var windVal = parseFloat(d.om_wind);
+  var wind = isNaN(windVal) ? '—' : windVal.toFixed(1);
   var aqiV = d.om_aqi, polV = d.om_pollen;
   var aC = aqiCls(aqiV), pC = pollenCls(polV);
   var aL = aqiLbl(aqiV, lang), pL = pollenLbl(polV, lang);
@@ -156,6 +162,6 @@ export function buildWeatherHtml(d, cfg) {
         '<div class="wcard-lbl ' + aC + '">' + aL + '</div>' +
       '</div>' +
     '</div>' +
-    '<div class="wsource">' + (d.aether_model || 'Open-Meteo') + '</div>'
+    '<div class="wsource">' + esc(d.aether_model || 'Open-Meteo') + '</div>'
   );
 }

@@ -84,6 +84,7 @@ public sealed class WeatherService : IDisposable
 
     // Annulation de l'attente entre deux rafraîchissements
     private CancellationTokenSource _waitCts = new();
+    private readonly object          _ctsMu   = new(); // protège _waitCts
     private volatile bool           _running = true;
     private readonly Task           _loopTask;
 
@@ -110,8 +111,14 @@ public sealed class WeatherService : IDisposable
     public void TriggerRefresh()
     {
         Logger.Info("Weather", "Rafraîchissement forcé demandé");
-        _waitCts.Cancel();
-        _waitCts = new CancellationTokenSource();
+        CancellationTokenSource old;
+        lock (_ctsMu)
+        {
+            old = _waitCts;
+            _waitCts = new CancellationTokenSource();
+        }
+        old.Cancel();
+        old.Dispose();
     }
 
     // ─── Géocodage ────────────────────────────────────────────────────────────
@@ -132,8 +139,8 @@ public sealed class WeatherService : IDisposable
                 return null;
             }
             var first = results[0]!;
-            double lat  = first["latitude"]!.GetValue<double>();
-            double lon  = first["longitude"]!.GetValue<double>();
+            double lat  = first["latitude"]?.GetValue<double>()  ?? 0.0;
+            double lon  = first["longitude"]?.GetValue<double>() ?? 0.0;
             string city = first["name"]?.GetValue<string>() ?? query;
             string country = first["country"]?.GetValue<string>() ?? "";
             Logger.Info("Weather", $"  Géocodage OK : {city} ({country}) → lat={G(lat)} lon={G(lon)}");
@@ -161,7 +168,9 @@ public sealed class WeatherService : IDisposable
 
     private async Task LoopAsync()
     {
-        await Task.Delay(3000);  // laisser le reste de l'app s'initialiser
+        CancellationToken tok0;
+        lock (_ctsMu) { tok0 = _waitCts.Token; }
+        try { await Task.Delay(3000, tok0); } catch (OperationCanceledException) { }
 
         int fail = 0;
 
@@ -214,7 +223,9 @@ public sealed class WeatherService : IDisposable
 
                 Logger.Info("Weather", $"  Prochain fetch dans : {delay} s  ({(ok ? "normal" : $"backoff fail={fail}")})");
 
-                try { await Task.Delay(TimeSpan.FromSeconds(Math.Max(delay, 30)), _waitCts.Token); }
+                CancellationToken tok;
+                lock (_ctsMu) { tok = _waitCts.Token; }
+                try { await Task.Delay(TimeSpan.FromSeconds(Math.Max(delay, 30)), tok); }
                 catch (OperationCanceledException) { Logger.Info("Weather", "Attente interrompue (rafraîchissement forcé)"); }
             }
             catch (Exception ex)
@@ -240,20 +251,28 @@ public sealed class WeatherService : IDisposable
 
         Logger.Debug("Weather", $"  Appels parallèles terminés en {sw.ElapsedMilliseconds} ms");
 
-        var cu = tWeather.Result?["current"];
-        var aq = tAir.Result?["current"];
+        // Accès conditionnel — .Result lance AggregateException sur tâche en faute
+        if (!tWeather.IsCompletedSuccessfully)
+            Logger.Warn("Weather", $"  Météo courante échouée : {tWeather.Exception?.GetBaseException().Message}");
+        if (!tAir.IsCompletedSuccessfully)
+            Logger.Warn("Weather", $"  Qualité de l'air échouée : {tAir.Exception?.GetBaseException().Message}");
+        if (!tForecast.IsCompletedSuccessfully)
+            Logger.Debug("Weather", $"  Prévisions échouées (non-bloquant) : {tForecast.Exception?.GetBaseException().Message}");
+
+        var cu = tWeather.IsCompletedSuccessfully  ? tWeather.Result?["current"]  : null;
+        var aq = tAir.IsCompletedSuccessfully      ? tAir.Result?["current"]      : null;
 
         double? temp       = N<double>(cu?["temperature_2m"]);
         double? feelsLike  = N<double>(cu?["apparent_temperature"]);
         double? humidity   = N<double>(cu?["relative_humidity_2m"]);
         double? precip     = N<double>(cu?["precipitation"]);
-        int?    code       = N<int>(cu?["weather_code"]);
+        int?    code       = NInt(cu?["weather_code"]);
         double? wind       = N<double>(cu?["wind_speed_10m"]);
         double? windGusts  = N<double>(cu?["wind_gusts_10m"]);
-        int?    windDir    = N<int>(cu?["wind_direction_10m"]);
+        int?    windDir    = NInt(cu?["wind_direction_10m"]);
         double? uv         = N<double>(cu?["uv_index"]);
-        int?    cloudCover = N<int>(cu?["cloud_cover"]);
-        int?    precipProb = N<int>(cu?["precipitation_probability"]);
+        int?    cloudCover = NInt(cu?["cloud_cover"]);
+        int?    precipProb = NInt(cu?["precipitation_probability"]);
 
         // Fallback precipitation_probability (AROME ne la fournit pas en current)
         if (precipProb == null)
@@ -264,7 +283,7 @@ public sealed class WeatherService : IDisposable
                 var url   = $"{OM_FORECAST}?latitude={G(lat)}&longitude={G(lon)}" +
                             "&current=precipitation_probability&timezone=auto&format=json";
                 var resp2 = await _http.GetStringAsync(url);
-                precipProb = N<int>(JsonNode.Parse(resp2)?["current"]?["precipitation_probability"]);
+                precipProb = NInt(JsonNode.Parse(resp2)?["current"]?["precipitation_probability"]);
                 Logger.Debug("Weather", $"  precipitation_probability (fallback) = {precipProb}%");
             }
             catch (Exception ex)
@@ -273,13 +292,13 @@ public sealed class WeatherService : IDisposable
             }
         }
 
-        int?    aqi    = N<int>(aq?["european_aqi"]);
+        int?    aqi    = NInt(aq?["european_aqi"]);
         double? grass  = N<double>(aq?["grass_pollen"]);
         double? birch  = N<double>(aq?["birch_pollen"]);
         double? alder  = N<double>(aq?["alder_pollen"]);
         double? ragweed= N<double>(aq?["ragweed_pollen"]);
-        int?    pm10   = N<int>(aq?["pm10"]);
-        int?    pm25   = N<int>(aq?["pm2_5"]);
+        int?    pm10   = NInt(aq?["pm10"]);
+        int?    pm25   = NInt(aq?["pm2_5"]);
 
         double? pollen = (grass == null && birch == null && alder == null && ragweed == null)
             ? null
@@ -287,11 +306,11 @@ public sealed class WeatherService : IDisposable
 
         string aqiLabel = aqi == null ? "—"
             : aqi <= 20 ? "Bon" : aqi <= 40 ? "Correct"
-            : aqi <= 60 ? "Modere" : aqi <= 80 ? "Mauvais" : "Tres mauvais";
+            : aqi <= 60 ? "Modéré" : aqi <= 80 ? "Mauvais" : "Très mauvais";
 
         string pollenLabel = pollen == null ? "—"
             : pollen == 0 ? "Nul" : pollen < 20 ? "Faible"
-            : pollen < 75 ? "Modere" : pollen < 150 ? "Eleve" : "Tres eleve";
+            : pollen < 75 ? "Modéré" : pollen < 150 ? "Élevé" : "Très élevé";
 
         var modelInfo = WEATHER_MODELS.GetValueOrDefault(modelId, WEATHER_MODELS["best_match"]);
 
@@ -316,7 +335,7 @@ public sealed class WeatherService : IDisposable
             Pm25        = pm25,
             AetherModel  = modelInfo.NameEn,
             WeatherModelId = modelId,
-            ForecastJson = tForecast.Result?.ToJsonString(),
+            ForecastJson = tForecast.IsCompletedSuccessfully ? tForecast.Result?.ToJsonString() : null,
         };
     }
 
@@ -417,11 +436,21 @@ public sealed class WeatherService : IDisposable
         try { return node.GetValue<T>(); } catch { return null; }
     }
 
+    // Lit un entier depuis un nœud JSON qui peut être un float (ex: 180.0 → 180).
+    // N<int> échoue si le JSON est un double — ce helper est tolérant.
+    private static int? NInt(JsonNode? node)
+    {
+        var d = N<double>(node);
+        return d.HasValue ? (int?)Math.Round(d.Value) : null;
+    }
+
     public void Dispose()
     {
         Logger.Info("Weather", "Arrêt du service météo");
         _running = false;
-        _waitCts.Cancel();
+        lock (_ctsMu) { _waitCts.Cancel(); }
+        try { _loopTask.Wait(TimeSpan.FromSeconds(5)); } catch { }
+        lock (_ctsMu) { _waitCts.Dispose(); }
         _http.Dispose();
     }
 }

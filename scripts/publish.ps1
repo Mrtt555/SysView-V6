@@ -36,8 +36,12 @@ if ($proc) {
     if ($Kill) {
         Write-Host "  Arrêt de SysViewManager (PID $($proc.Id))..." -ForegroundColor Yellow
         try {
-            $tk = & taskkill /F /PID $proc.Id 2>&1
-            Start-Sleep -Milliseconds 800
+            $closed = $proc.CloseMainWindow()
+            if ($closed) { $proc.WaitForExit(3000) | Out-Null }
+            if (-not $proc.HasExited) {
+                & taskkill /F /PID $proc.Id 2>&1 | Out-Null
+                Start-Sleep -Milliseconds 800
+            }
             if (Get-Process -Name "SysViewManager" -ErrorAction SilentlyContinue) {
                 throw "Toujours en cours"
             }

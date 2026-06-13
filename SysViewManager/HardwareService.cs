@@ -57,7 +57,8 @@ public sealed class HardwareService : IDisposable
 
     // Flags de découverte — pour ne logger qu'une seule fois
     private bool _hwDiscovered = false;
-    private HashSet<string> _knownDrives = new();
+    private HashSet<string> _knownDrives    = new();
+    private readonly HashSet<string> _pollLettersBuf = new(); // buffer réutilisé chaque poll
 
     // Export JSON
     private readonly string _dataDir;
@@ -144,10 +145,11 @@ public sealed class HardwareService : IDisposable
             }
 
             // ── Log ajout/retrait de disques ──────────────────────────────────
-            var letters = s.Disks.Select(d => d.Letter).ToHashSet();
-            if (!letters.SetEquals(_knownDrives))
+            _pollLettersBuf.Clear();
+            foreach (var d in s.Disks) _pollLettersBuf.Add(d.Letter);
+            if (!_pollLettersBuf.SetEquals(_knownDrives))
             {
-                _knownDrives = letters;
+                _knownDrives = new HashSet<string>(_pollLettersBuf);
                 Logger.Info("LHM", $"Disques détectés ({s.Disks.Count}) :");
                 foreach (var d in s.Disks)
                     Logger.Info("LHM", $"  {d.Letter.ToUpper()}:  {d.UsedGb:F1} Go / {d.TotalGb:F0} Go  ({d.Percent:F0}% utilisé){(d.Removable ? " [amovible]" : "")}");
@@ -351,7 +353,9 @@ public sealed class HardwareService : IDisposable
             case HardwareType.GpuNvidia:
             case HardwareType.GpuIntel:
             {
-                bool isDiscrete = h.HardwareType != HardwareType.GpuIntel;
+                // Intel Arc est HardwareType.GpuIntel mais c'est un GPU discret
+                bool isDiscrete = h.HardwareType != HardwareType.GpuIntel
+                                  || h.Name.Contains("Arc", StringComparison.OrdinalIgnoreCase);
                 if (s.GpuName != null && !isDiscrete) break;
                 if (s.GpuName != null) { s.GpuTemp = null; s.GpuUsage = null; s.VramUsed = null; s.VramTotal = null; }
                 s.GpuName = h.Name;
@@ -498,6 +502,7 @@ public sealed class HardwareService : IDisposable
     public void Dispose()
     {
         _running = false;
+        _thread.Join(TimeSpan.FromSeconds(2)); // attendre la fin du poll en cours
         Logger.Info("LHM", "Fermeture de LibreHardwareMonitor...");
         try
         {

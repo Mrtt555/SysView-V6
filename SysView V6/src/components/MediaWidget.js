@@ -21,7 +21,7 @@ export function fmtArtist(artist, title) {
   if (KNOWN_SVC.indexOf(artist) >= 0) return artist;
   var noSpaces = artist.indexOf(' ') < 0;
   var isVevo   = artist.slice(-4).toUpperCase() === 'VEVO';
-  var isTopic  = artist.slice(-8) === ' - Topic';
+  var isTopic  = artist.slice(-8).toLowerCase() === ' - topic';
   if (noSpaces || isVevo || isTopic) {
     var dash = title ? title.indexOf(' - ') : -1;
     if (dash > 0 && dash < 60) return title.substring(0, dash);
@@ -63,14 +63,18 @@ export function renderProgress(snap, mediaDur, mediaPos, bridgeOk) {
 }
 
 // ─── Charge l'image d'album art avec fondu ───────────────────
+var _artGen = 0; // génération courante — évite l'effet de course si appelé deux fois rapidement
+
 export function setAlbumArt(src) {
   var img = document.getElementById('media-art-img');
   var ph  = document.getElementById('media-icon-ph');
   if (!img) return;
+  var gen = ++_artGen;
   img.style.opacity = 0;
-  img.onload  = function() { img.style.opacity = 1; if (ph) ph.style.display = 'none'; };
-  img.onerror = function() { img.style.opacity = 0; if (ph) ph.style.display = 'flex'; };
-  if (img.src === src) img.src = '';
+  // Les callbacks vérifient _artGen pour ignorer les chargements devenus obsolètes
+  img.onload  = function() { if (_artGen === gen) { img.style.opacity = 1; if (ph) ph.style.display = 'none'; } };
+  img.onerror = function() { if (_artGen === gen) { img.style.opacity = 0; if (ph) ph.style.display = 'flex'; } };
+  // Ne pas remettre src à '' (déclencherait onerror et un flash) — le navigateur utilise le cache si même URL
   img.src = src;
 }
 

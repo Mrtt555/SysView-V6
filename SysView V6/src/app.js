@@ -155,9 +155,18 @@ document.addEventListener('alpine:init', function() {
         if (d.gpuName && d.gpuName !== this.hw.gpuName) this.hw.gpuName = d.gpuName;
         if (d.disks) {
           var self = this;
+          var nd = {};
           ['c','d','e','f','g','h'].forEach(function(l) {
-            if (d.disks[l]) self.disks[l] = d.disks[l];
+            if (d.disks[l]) {
+              nd[l] = d.disks[l];
+            } else if (self.disks[l]) {
+              // Disque éjecté — masquer le panneau et invalider le cache
+              var blk = document.getElementById('disk-' + l + '-blk');
+              if (blk) blk.style.display = 'none';
+              delete self._diskCache[l];
+            }
           });
+          self.disks = nd;
         }
       },
 
@@ -213,7 +222,7 @@ document.addEventListener('alpine:init', function() {
         this._mediaGoneAt = 0;
         var titleChanged  = d.title !== this._lastTitle;
         this._lastTitle   = d.title;
-        if (titleChanged) this._lastThumb = '';
+        if (titleChanged) { this._lastThumb = ''; this._pausedSince = 0; }
 
         this.mediaTitle    = d.title;
         this.mediaPlatform = d.platform || '';

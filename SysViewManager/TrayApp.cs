@@ -25,6 +25,10 @@ public sealed class TrayApp : ApplicationContext
     private readonly ToolStripMenuItem _miWeather;
     private readonly ToolStripMenuItem _miAutoStart;
     private readonly System.Windows.Forms.Timer _timer;
+    private readonly Font                       _titleFont;
+    private readonly CancellationTokenSource    _shutdownCts = new();
+    private int _popupOpen      = 0; // verrou atomique contre les popups multiples
+    private int _menuRefreshing = 0; // verrou atomique contre les tâches Opening multiples
 
     public TrayApp(HardwareService hw, WeatherService weather, string dataDir)
     {
@@ -38,7 +42,10 @@ public sealed class TrayApp : ApplicationContext
         _menu = new ContextMenuStrip();
 
         var miTitle = new ToolStripMenuItem("SysView V6") { Enabled = false };
-        miTitle.Font = new Font(SystemFonts.MenuFont ?? new Font("Segoe UI", 9f), FontStyle.Bold);
+        var menuFont = SystemFonts.MenuFont ?? new Font("Segoe UI", 9f);
+        _titleFont = new Font(menuFont, FontStyle.Bold);
+        menuFont.Dispose(); // SystemFonts.MenuFont retourne une nouvelle instance à disposer
+        miTitle.Font = _titleFont;
         _menu.Items.Add(miTitle);
         _menu.Items.Add(new ToolStripSeparator());
 
@@ -59,10 +66,11 @@ public sealed class TrayApp : ApplicationContext
         miRefreshWeather.Click += (_, _) => {
             _weather.TriggerRefresh();
             miRefreshWeather.Enabled = false;
-            Task.Delay(5000).ContinueWith(_ => _syncCtx.Post(__ => {
-                miRefreshWeather.Enabled = true;
-                RefreshStatus();
-            }, null));
+            Task.Delay(5000, _shutdownCts.Token).ContinueWith(
+                _ => _syncCtx.Post(__ => { miRefreshWeather.Enabled = true; RefreshStatus(); }, null),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnRanToCompletion,
+                TaskScheduler.Default);
         };
         _menu.Items.Add(miRefreshWeather);
 
@@ -80,9 +88,9 @@ public sealed class TrayApp : ApplicationContext
         };
         _menu.Items.Add(miDataDir);
 
-        var miDocs = new ToolStripMenuItem("🌐  Bridge API /docs");
+        var miDocs = new ToolStripMenuItem("🌐  Bridge API /v1/status");
         miDocs.Click += (_, _) => Process.Start(new ProcessStartInfo
-            { FileName = "http://127.0.0.1:5001/docs", UseShellExecute = true });
+            { FileName = "http://127.0.0.1:5001/v1/status", UseShellExecute = true });
         _menu.Items.Add(miDocs);
 
         _menu.Items.Add(new ToolStripSeparator());
@@ -91,8 +99,17 @@ public sealed class TrayApp : ApplicationContext
         miQuit.Click += (_, _) => Quit();
         _menu.Items.Add(miQuit);
 
-        // Rafraîchir le statut auto-start au moment où le menu s'ouvre
-        _menu.Opening += (_, _) => RefreshAutoStartLabel();
+        // Rafraîchir le statut auto-start au moment où le menu s'ouvre (une seule tâche à la fois)
+        _menu.Opening += (_, _) => {
+            if (System.Threading.Interlocked.CompareExchange(ref _menuRefreshing, 1, 0) != 0) return;
+            Task.Run(() => {
+                bool on = Program.IsAutoStartRegistered();
+                _syncCtx.Post(_ => {
+                    UpdateAutoStartLabel(on);
+                    System.Threading.Interlocked.Exchange(ref _menuRefreshing, 0);
+                }, null);
+            });
+        };
 
         // ── Icône tray ────────────────────────────────────────────────────────
         _tray = new NotifyIcon
@@ -148,9 +165,8 @@ public sealed class TrayApp : ApplicationContext
         _tray.Text = $"SysView V6 — CPU:{cpuStr}  RAM:{ramStr}  Météo:{meteoStr}";
     }
 
-    private void RefreshAutoStartLabel()
+    private void UpdateAutoStartLabel(bool on)
     {
-        bool on = Program.IsAutoStartRegistered();
         _miAutoStart.Text = on
             ? "⚡  Démarrage auto  [✓ Actif]"
             : "⚡  Démarrage auto  [✗ Désactivé]";
@@ -160,25 +176,34 @@ public sealed class TrayApp : ApplicationContext
 
     private void ToggleAutoStart()
     {
-        bool current = Program.IsAutoStartRegistered();
-        if (current)
-            Program.UnregisterAutoStart();
-        else
-            Program.RegisterAutoStart();
-
-        // Rafraîchir le label après la commande
-        Task.Delay(1500).ContinueWith(_ =>
-            _syncCtx.Post(__ => RefreshAutoStartLabel(), null));
+        // Tout hors du thread UI pour ne pas geler l'interface
+        Task.Run(() => {
+            bool current = Program.IsAutoStartRegistered();
+            if (current) Program.UnregisterAutoStart();
+            else         Program.RegisterAutoStart();
+            System.Threading.Thread.Sleep(500);
+            bool updated = Program.IsAutoStartRegistered();
+            _syncCtx.Post(_ => UpdateAutoStartLabel(updated), null);
+        });
     }
 
     // ─── Popup double-clic ────────────────────────────────────────────────────
 
     private void ShowStatusPopup()
     {
+        // Empêcher les popups multiples sur double-clic rapide
+        if (System.Threading.Interlocked.CompareExchange(ref _popupOpen, 1, 0) != 0) return;
         var snap = _hw.GetSnapshot();
         var w    = _weather.GetData();
-        bool autoOn = Program.IsAutoStartRegistered();
-        MessageBox.Show(
+        Task.Run(() => {
+            bool autoOn = Program.IsAutoStartRegistered();
+            _syncCtx.Post(_ => ShowStatusPopupWithAutoStart(snap, w, autoOn), null);
+        });
+    }
+
+    private void ShowStatusPopupWithAutoStart(HardwareSnapshot snap, WeatherData w, bool autoOn)
+    {
+        try { MessageBox.Show(
             $"Hardware (LHM) : {(snap.LhmOnline ? "✓ OK" : "✗ Dégradé (admin requis ?)")}\n" +
             $"Bridge         : ✓ Port 5001\n" +
             $"Météo          : {(w.Temp.HasValue ? $"✓ {w.Temp.Value:F1}°C" : "⏳ En attente…")}\n" +
@@ -194,10 +219,13 @@ public sealed class TrayApp : ApplicationContext
             $"IQA   : {w.Aqi?.ToString() ?? "—"}  ({w.AqiLabel})  Pollen : {w.Pollen?.ToString() ?? "—"} ({w.PollenLabel})\n\n" +
             $"Données : {_dataDir}",
             "SysView V6 — Statut", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        finally { System.Threading.Interlocked.Exchange(ref _popupOpen, 0); }
     }
 
     private void Quit()
     {
+        _shutdownCts.Cancel();
         _timer.Stop();
         _tray.Visible = false;
         Application.Exit();
@@ -229,7 +257,14 @@ public sealed class TrayApp : ApplicationContext
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _timer.Dispose(); _tray.Dispose(); _menu.Dispose(); }
+        if (disposing)
+        {
+            _shutdownCts.Dispose();
+            _timer.Dispose();
+            _tray.Dispose();
+            _menu.Dispose();
+            _titleFont.Dispose();
+        }
         base.Dispose(disposing);
     }
 }
