@@ -5,7 +5,9 @@
 #   - push d'un tag vX.Y.Z     → release publique
 #   - workflow_dispatch manuel → release draft
 #
-# Produit : SysViewManager.exe (win-x64, single-file, self-contained)
+# Produit :
+#   - SysViewManager.exe    (win-x64, single-file, self-contained)
+#   - SysViewV6_Setup.exe   (installeur Inno Setup — installation complète)
 # =========================================================
 
 name: Release SysViewManager
@@ -67,7 +69,7 @@ jobs:
             -p:AssemblyVersion=${{ steps.version.outputs.assembly_version }} `
             --nologo
 
-      # ── Vérification ─────────────────────────────────────────────────────────
+      # ── Vérification SysViewManager.exe ──────────────────────────────────────
       - name: Verify output
         shell: pwsh
         run: |
@@ -75,6 +77,27 @@ jobs:
           if (!(Test-Path $exe)) { Write-Error "SysViewManager.exe introuvable!"; exit 1 }
           $size = (Get-Item $exe).Length / 1MB
           Write-Host "SysViewManager.exe — $([math]::Round($size, 1)) MB"
+
+      # ── Installer Inno Setup ──────────────────────────────────────────────────
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      # ── Compiler le setup ─────────────────────────────────────────────────────
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc /Q `
+            /DAppVersion="${{ steps.version.outputs.assembly_version }}" `
+            "installer\setup.iss"
+          $setup = "installer\Output\SysViewV6_Setup.exe"
+          if (!(Test-Path $setup)) {
+            Write-Error "SysViewV6_Setup.exe introuvable après compilation Inno Setup"
+            exit 1
+          }
+          $size = (Get-Item $setup).Length / 1MB
+          Write-Host "SysViewV6_Setup.exe — $([math]::Round($size, 1)) MB"
 
       # ── Créer le GitHub Release ───────────────────────────────────────────
       - name: Create GitHub Release
@@ -89,13 +112,15 @@ jobs:
 
             Application tray unique — aucune dépendance Python requise.
 
-            ### Installation rapide
+            ### ⚡ Installation complète (recommandé)
+            1. Téléchargez **`SysViewV6_Setup.exe`** ci-dessous
+            2. Lancez-le **en tant qu'administrateur**
+            3. L'installeur télécharge le wallpaper, configure la météo et crée la tâche planifiée automatiquement
+
+            ### Installation manuelle (SysViewManager.exe uniquement)
             1. Téléchargez **`SysViewManager.exe`** ci-dessous
             2. Lancez-le **en tant qu'administrateur** (requis pour les capteurs de température LHM)
             3. L'icône apparaît dans la barre système — entrez votre ville dans Wallpaper Engine
-
-            > Le code source est disponible dans ce dépôt mais **il n'est pas nécessaire de le télécharger**.
-            > L'installeur `SysViewV6_Setup.exe` télécharge automatiquement cet exe lors de l'installation.
 
             ### Données générées automatiquement
             | Fichier | Contenu |
@@ -117,3 +142,4 @@ jobs:
             ```
           files: |
             SysViewManager/bin/Release/net8.0-windows10.0.17763.0/win-x64/publish/SysViewManager.exe
+            installer/Output/SysViewV6_Setup.exe
