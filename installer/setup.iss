@@ -281,7 +281,6 @@ var
   CityFile : String;
   OutFile  : String;
   PSCmd    : String;
-  RC       : Integer;
   Lines    : TStringList;
   Line     : String;
   P1, P2   : Integer;
@@ -299,21 +298,20 @@ begin
   SaveStringToFile(CityFile, gCityInput, False);
   DeleteFile(OutFile);
 
+  // ExecPSFile evite le quoting cmd /c "..." -- les " dans PSCmd cassaient le geocodage
   PSCmd :=
-    '[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;' +
-    '$ProgressPreference=''SilentlyContinue'';' +
-    'try{' +
-      '$city=[Uri]::EscapeDataString((Get-Content ''' + CityFile + ''' -Raw -Encoding UTF8).Trim());' +
-      '$url="https://geocoding-api.open-meteo.com/v1/search?name=$city&count=1&language=fr&format=json";' +
-      '$j=(Invoke-WebRequest -Uri $url -UseBasicParsing -EA Stop).Content|ConvertFrom-Json;' +
-      '$x=$j.results[0];' +
-      '$line="$($x.latitude)|$($x.longitude)|$($x.name)";' +
-      '[IO.File]::WriteAllText(''' + OutFile + ''',$line,[Text.Encoding]::UTF8)' +
-    '}catch{[IO.File]::WriteAllText(''' + OutFile + ''',"",[Text.Encoding]::UTF8)}';
+    '[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12' + #13#10 +
+    '$ProgressPreference=''SilentlyContinue''' + #13#10 +
+    'try{' + #13#10 +
+    '  $city=[Uri]::EscapeDataString((Get-Content ''' + CityFile + ''' -Raw -Encoding UTF8).Trim())' + #13#10 +
+    '  $url=''https://geocoding-api.open-meteo.com/v1/search?name=''+$city+''&count=1&language=fr&format=json''' + #13#10 +
+    '  $j=(Invoke-WebRequest -Uri $url -UseBasicParsing -EA Stop).Content|ConvertFrom-Json' + #13#10 +
+    '  $x=$j.results[0]' + #13#10 +
+    '  $line="$($x.latitude)|$($x.longitude)|$($x.name)"' + #13#10 +
+    '  [IO.File]::WriteAllText(''' + OutFile + ''',$line,[Text.Encoding]::UTF8)' + #13#10 +
+    '}catch{[IO.File]::WriteAllText(''' + OutFile + ''','''',[Text.Encoding]::UTF8)}';
 
-  Exec(ExpandConstant('{cmd}'),
-    '/c powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "' + PSCmd + '"',
-    '', SW_HIDE, ewWaitUntilTerminated, RC);
+  ExecPSFile(PSCmd);
 
   if not FileExists(OutFile) then begin
     AppendLog('[AVERT] Geocodage : pas de reponse pour "' + gCityInput + '" -- valeurs par defaut utilisees.');
@@ -622,9 +620,10 @@ begin
 
   // ── Dossier %AppData%\SysViewManager\ ─────────────────────────────────────
   SetStatus('[3/3] Creation du dossier de donnees...');
+  // Pas de " dans la chaine : evite le bug de quoting cmd /c "..."
   ExecPS(
-    '$d="$env:APPDATA\SysViewManager";' +
-    'if(!(Test-Path $d)){New-Item -ItemType Directory -Path $d -Force | Out-Null}');
+    '$d=$env:APPDATA+''\SysViewManager'';' +
+    'if(!(Test-Path $d)){New-Item -ItemType Directory -Path $d -Force|Out-Null}');
   AppendLog('[OK] %AppData%\SysViewManager\ pret.');
 
   // ── runtime_config.json ───────────────────────────────────────────────────
@@ -734,16 +733,17 @@ begin
   // ── Trouver le navigateur Chromium ───────────────────────────────────────
   OutFile := ExpandConstant('{tmp}\sv_browser.txt');
   DeleteFile(OutFile);
-  ExecPS(
-    '$p=@(' +
-    '"$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe",' +
-    '"$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe",' +
-    '"$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe",' +
-    '"$env:ProgramFiles\Google\Chrome\Application\chrome.exe",' +
-    '"${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",' +
-    '"$env:LOCALAPPDATA\Microsoft\Edge\Application\msedge.exe"' +
-    ');' +
-    '$b=$p|Where-Object{Test-Path $_}|Select-Object -First 1;' +
+  // ExecPSFile : les " dans les chemins $env:... cassaient ExecPS (quoting cmd)
+  ExecPSFile(
+    '$p=@(' + #13#10 +
+    '  "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe",' + #13#10 +
+    '  "$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe",' + #13#10 +
+    '  "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe",' + #13#10 +
+    '  "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",' + #13#10 +
+    '  "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",' + #13#10 +
+    '  "$env:LOCALAPPDATA\Microsoft\Edge\Application\msedge.exe"' + #13#10 +
+    ')' + #13#10 +
+    '$b=$p|Where-Object{Test-Path $_}|Select-Object -First 1' + #13#10 +
     'if($b){Set-Content ''' + OutFile + ''' $b -Encoding UTF8}');
 
   BrowserExe := '';
